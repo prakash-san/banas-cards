@@ -422,7 +422,6 @@ function cardEl(card, { inHand = false, inSlot = false } = {}) {
   div.innerHTML = `
     <img src="${card.image}" alt="${escapeHtml(card.name)}" loading="lazy" draggable="false" />
     <div class="card-meta">
-      <div class="card-name">${escapeHtml(card.name)}</div>
       <div class="card-stats">P${card.power} · S${card.speed} · I${card.intelligence}</div>
     </div>`;
 
@@ -680,7 +679,6 @@ function cardHtmlSmall(card) {
     <div class="banas-card family-${card.family}" title="${escapeHtml(card.name)} — P${card.power} · S${card.speed} · I${card.intelligence}">
       <img src="${card.image}" alt="${escapeHtml(card.name)}" draggable="false" />
       <div class="card-meta">
-        <div class="card-name">${escapeHtml(card.name)}</div>
         <div class="card-stats">P${card.power} · S${card.speed} · I${card.intelligence}</div>
       </div>
     </div>`;

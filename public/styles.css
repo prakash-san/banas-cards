@@ -15,7 +15,7 @@
   --radius: 16px;
   --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   --card-width: 168px;
-  --card-meta-height: 4.5rem;
+  --card-meta-height: 2.5rem;
   --card-image-height: calc(var(--card-width) * 7 / 5);
   --card-height: calc(var(--card-image-height) + var(--card-meta-height));
   --header-btn-bg: rgba(254, 246, 232, 0.08);
@@ -501,7 +501,7 @@ input[type="text"]:focus {
   [data-theme="dark"],
   [data-theme="light"] {
     --card-width: min(156px, calc((100vw - 2.5rem) / 3 - 0.35rem));
-    --card-meta-height: 4.25rem;
+    --card-meta-height: 2.35rem;
   }
 
   .site-header {
@@ -530,12 +530,8 @@ input[type="text"]:focus {
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
   }
 
-  .banas-card .card-name {
-    font-size: 0.78rem;
-  }
-
   .banas-card .card-stats {
-    font-size: 0.86rem;
+    font-size: 0.88rem;
   }
 }
 
@@ -674,37 +670,24 @@ input[type="text"]:focus {
   min-height: var(--card-meta-height);
   max-height: var(--card-meta-height);
   flex: 0 0 var(--card-meta-height);
-  padding: 0.4rem 0.5rem 0.45rem;
+  padding: 0.35rem 0.45rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.15rem;
+  align-items: center;
   overflow: hidden;
   box-sizing: border-box;
 }
 
-.banas-card .card-name {
-  font-weight: 600;
-  font-size: 0.88rem;
-  line-height: 1.2;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  word-break: break-word;
-  hyphens: auto;
-}
-
 .banas-card .card-stats {
   color: var(--text);
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.2;
   opacity: 0.92;
   white-space: nowrap;
-  flex-shrink: 0;
+  text-align: center;
 }
 
 .banas-card.family-fire { border-top: 3px solid var(--fire); }
