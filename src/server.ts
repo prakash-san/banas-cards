@@ -7,6 +7,7 @@ import { ALL_CARDS } from "./game/cards.js";
 import {
   acknowledgeVictory,
   addAiOpponents,
+  bindPlayerSocket,
   createRoom,
   createRoomVsAi,
   getRoomState,
@@ -70,6 +71,11 @@ wss.on("connection", (ws) => {
     } catch {
       send(ws, { type: "error", message: "Invalid message." });
       return;
+    }
+
+    // Keep the live socket mapped even if a stale close race cleared it.
+    if (playerId) {
+      bindPlayerSocket(playerId, ws);
     }
 
     switch (msg.type) {
@@ -145,6 +151,7 @@ wss.on("connection", (ws) => {
         const state = getRoomState(msg.roomCode);
         send(ws, {
           type: "reconnected",
+          roomCode: msg.roomCode.toUpperCase(),
           playerId: msg.playerId,
           state: state ? toClientState(state, msg.playerId) : null,
         });
@@ -192,7 +199,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    if (playerId) handleDisconnect(playerId);
+    if (playerId) handleDisconnect(playerId, ws);
   });
 });
 

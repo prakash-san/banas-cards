@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts"
+    "dev": "tsx watch src/server.ts",
+    "test:race": "node scripts/test-disconnect-race.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",

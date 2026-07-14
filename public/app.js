@@ -29,6 +29,13 @@ let pendingAssignRender = false;
 let assignBoardReady = false;
 /** @type {boolean} */
 let attemptingReconnect = false;
+/** @type {boolean} */
+let intentionalClose = false;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let reconnectTimer = null;
+/** @type {number} */
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 8;
 
 function handsChanged(prev, next) {
   const a = prev?.myHand;
@@ -88,17 +95,91 @@ function saveSession() {
   }
 }
 
+function syncSubmitButton() {
+  const submitBtn = document.getElementById("btn-submit");
+  if (!submitBtn || !state) return;
+
+  const alreadySubmitted = !!state.myAssignment;
+  const allAssigned = ["power", "speed", "intelligence"].every((s) => assignments[s]);
+
+  if (alreadySubmitted) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Locked In ✓";
+  } else {
+    submitBtn.disabled = !allAssigned;
+    submitBtn.textContent = "Lock In Choices";
+  }
+}
+
+function resetDragState() {
+  isDragging = false;
+  document.querySelectorAll(".banas-card.dragging").forEach((el) => {
+    el.classList.remove("dragging");
+  });
+  document.querySelectorAll(".slot-drop").forEach((z) => z.classList.remove("drag-over"));
+}
+
 function connect() {
   return new Promise((resolve, reject) => {
+    if (ws) {
+      intentionalClose = true;
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+      intentionalClose = false;
+    }
+
     ws = new WebSocket(WS_URL);
-    ws.onopen = () => resolve();
+    ws.onopen = () => {
+      reconnectAttempts = 0;
+      resolve();
+    };
     ws.onerror = () => reject(new Error("Connection failed"));
     ws.onmessage = (ev) => handleMessage(JSON.parse(ev.data));
     ws.onclose = () => {
-      if (attemptingReconnect) return;
+      if (intentionalClose || attemptingReconnect) return;
+      if (playerId && roomCode) {
+        toast("Connection lost — reconnecting…", "info");
+        scheduleReconnect();
+        return;
+      }
       toast("Disconnected. Refresh to reconnect.", "info");
     };
   });
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || attemptingReconnect) return;
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    toast("Could not reconnect. Refresh the page.", "error");
+    return;
+  }
+
+  const delay = Math.min(1000 * 2 ** reconnectAttempts, 8000);
+  reconnectAttempts += 1;
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    if (!playerId || !roomCode) return;
+    attemptingReconnect = true;
+    try {
+      await connect();
+      send({ type: "reconnect", playerId, roomCode });
+      setTimeout(() => {
+        if (attemptingReconnect) {
+          attemptingReconnect = false;
+          scheduleReconnect();
+        }
+      }, 3000);
+    } catch {
+      attemptingReconnect = false;
+      scheduleReconnect();
+    }
+  }, delay);
 }
 
 function clearSavedSession() {
@@ -107,6 +188,10 @@ function clearSavedSession() {
 
 function failReconnectSilently() {
   attemptingReconnect = false;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   clearSavedSession();
   playerId = null;
   roomCode = null;
@@ -115,7 +200,17 @@ function failReconnectSilently() {
 }
 
 function send(data) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(data));
+    return true;
+  }
+  if (playerId && roomCode) {
+    toast("Not connected — trying to reconnect…", "info");
+    scheduleReconnect();
+  } else {
+    toast("Not connected to server");
+  }
+  return false;
 }
 
 function handleMessage(msg) {
@@ -123,8 +218,9 @@ function handleMessage(msg) {
     case "joined":
     case "reconnected":
       attemptingReconnect = false;
+      reconnectAttempts = 0;
       playerId = msg.playerId;
-      roomCode = msg.roomCode;
+      if (msg.roomCode) roomCode = msg.roomCode;
       if (msg.state) applyState(msg.state);
       saveSession();
       break;
@@ -140,6 +236,15 @@ function handleMessage(msg) {
         break;
       }
       toast(msg.message);
+      // Restore submit / next controls if the server rejected an action
+      if (state?.phase === "assigning" && !state.myAssignment) {
+        syncSubmitButton();
+        scheduleRenderAssign(true);
+      }
+      if (state?.phase === "round-summary") {
+        const nextBtn = document.getElementById("btn-next");
+        if (nextBtn) nextBtn.disabled = false;
+      }
       break;
   }
 }
@@ -156,23 +261,23 @@ function applyState(s) {
       showScreen("waiting");
       break;
     case "assigning":
+      resetDragState();
       if (prevPhase !== "assigning" || needsAssignDomRefresh(prevState, s)) {
         assignments = s.myAssignment
           ? { ...s.myAssignment }
           : { power: null, speed: null, intelligence: null };
         selectedCardId = null;
-        const btn = document.getElementById("btn-submit");
-        btn.textContent = s.myAssignment ? "Locked In ✓" : "Lock In Choices";
-        btn.disabled = !!s.myAssignment;
+        syncSubmitButton();
         scheduleRenderAssign(true);
       } else {
         updateAssignStatusOnly();
+        syncSubmitButton();
       }
       showScreen("assign");
       break;
     case "resolving":
       selectedCardId = null;
-      isDragging = false;
+      resetDragState();
       pendingAssignRender = false;
       scheduleRenderAssign(true);
       showScreen("assign");
@@ -293,9 +398,8 @@ function onDragStart(e) {
 }
 
 function onDragEnd(e) {
-  isDragging = false;
+  resetDragState();
   e.target.closest(".banas-card")?.classList.remove("dragging");
-  document.querySelectorAll(".slot-drop").forEach((z) => z.classList.remove("drag-over"));
   if (pendingAssignRender) scheduleRenderAssign(true);
 }
 
@@ -380,9 +484,16 @@ function initAssignBoard() {
         assignCardToStat(cardId, zone.dataset.stat);
         selectedCardId = null;
       }
-      isDragging = false;
+      resetDragState();
     });
   }
+
+  // Safety net: HTML5 drag can skip dragend if the node is removed mid-drag.
+  document.addEventListener("dragend", () => {
+    if (!isDragging) return;
+    resetDragState();
+    if (pendingAssignRender) scheduleRenderAssign(true);
+  });
 }
 
 function assignCardToStat(cardId, stat) {
@@ -443,16 +554,7 @@ function renderAssign() {
 
   if (!locked) updateSlotHighlights();
 
-  const allAssigned = ["power", "speed", "intelligence"].every((s) => assignments[s]);
-  const submitBtn = document.getElementById("btn-submit");
-  const alreadySubmitted = !!state.myAssignment;
-
-  if (alreadySubmitted) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Locked In ✓";
-  } else if (submitBtn.textContent === "Lock In Choices") {
-    submitBtn.disabled = !allAssigned;
-  }
+  syncSubmitButton();
 }
 
 function renderResults() {
@@ -512,6 +614,7 @@ function renderResults() {
   const nextBtn = document.getElementById("btn-next");
   const waitMsg = document.getElementById("results-wait");
 
+  nextBtn.disabled = false;
   if (state.winnerId) {
     nextBtn.textContent = "See Victory 🎉";
     nextBtn.hidden = !isHost;
@@ -614,18 +717,39 @@ document.getElementById("btn-add-ai").addEventListener("click", () => {
 document.getElementById("btn-start").addEventListener("click", () => send({ type: "start" }));
 
 document.getElementById("btn-submit").addEventListener("click", () => {
-  send({ type: "assign", assignment: { ...assignments } });
-  document.getElementById("btn-submit").disabled = true;
-  document.getElementById("btn-submit").textContent = "Locked In ✓";
+  const allAssigned = ["power", "speed", "intelligence"].every((s) => assignments[s]);
+  if (!allAssigned || state?.myAssignment) return;
+
+  const submitBtn = document.getElementById("btn-submit");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Locking in…";
   selectedCardId = null;
+
+  const ok = send({ type: "assign", assignment: { ...assignments } });
+  if (!ok) {
+    syncSubmitButton();
+  }
 });
 
 document.getElementById("btn-next").addEventListener("click", () => {
-  if (state?.winnerId) {
-    send({ type: "view-victory" });
-  } else {
-    send({ type: "next-round" });
+  const nextBtn = document.getElementById("btn-next");
+  if (nextBtn.disabled) return;
+  nextBtn.disabled = true;
+
+  const ok = state?.winnerId
+    ? send({ type: "view-victory" })
+    : send({ type: "next-round" });
+
+  if (!ok) {
+    nextBtn.disabled = false;
+    return;
   }
+
+  // Re-enable shortly so a rejected action can be retried; state updates also
+  // rebuild this button via renderResults().
+  setTimeout(() => {
+    if (state?.phase === "round-summary") nextBtn.disabled = false;
+  }, 1200);
 });
 document.getElementById("btn-play-again").addEventListener("click", () => send({ type: "play-again" }));
 
