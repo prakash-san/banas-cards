@@ -4,6 +4,8 @@ Multiplayer online version of **Banas Cards** — a strategy card game for 2–4
 
 Created by Aditya Prakash. [Game rules](https://docs.google.com/document/d/1yB57wDSmzrSs7YQGW2bw1TqE4wvxY6GLYf1xPrsnVvs/edit?usp=sharing)
 
+© 2026 Aditya Prakash. All rights reserved.
+
 ## Quick start
 
 ```bash

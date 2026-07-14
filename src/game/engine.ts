@@ -411,6 +411,7 @@ export function startNewRound(state: GameState): GameState {
     deck: remainingDeck,
     round: state.round + 1,
     lastRoundResult: null,
+    winnerId: null,
   };
 }
 

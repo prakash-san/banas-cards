@@ -8,11 +8,37 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("banas-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.setAttribute("data-theme", theme);
+        } else {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="bg-pattern"></div>
 
   <header class="site-header">
+    <div class="header-toolbar">
+      <button type="button" id="btn-rules" class="header-btn" aria-haspopup="dialog">
+        Rules
+      </button>
+      <button type="button" id="btn-settings" class="header-btn" aria-haspopup="dialog" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+        </svg>
+        <span class="header-btn-label">Settings</span>
+      </button>
+    </div>
     <h1>🐻 Banas Cards</h1>
     <p class="tagline">Strategy, luck &amp; quick thinking — first to 11 wins!</p>
   </header>
@@ -46,16 +72,10 @@
           <button id="btn-join" class="btn btn-secondary">Join Game</button>
         </div>
 
-        <details class="rules-summary">
-          <summary>How to play</summary>
-          <ul>
-            <li>2–4 players. Each round you get 3 cards.</li>
-            <li>Assign one card each to <strong>Power</strong>, <strong>Speed</strong>, and <strong>Intelligence</strong>.</li>
-            <li>Family trump: Fire → Metal → Earth → Water → Fire</li>
-            <li>Special cards (Frostpaw) skip trump — stats decide!</li>
-            <li>Win challenges to score points. First to <strong>11</strong> wins.</li>
-          </ul>
-        </details>
+        <p class="rules-summary">
+          New here?
+          <button type="button" id="btn-rules-lobby" class="btn-text-link">Read the rules</button>
+        </p>
       </div>
     </section>
 
@@ -133,6 +153,87 @@
       </div>
     </section>
   </main>
+
+  <footer class="site-footer">
+    <p>© 2026 Aditya Prakash. All rights reserved.</p>
+  </footer>
+
+  <!-- Settings -->
+  <div id="settings-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2 id="settings-title">Settings</h2>
+        <button type="button" class="modal-close" data-close-modal="settings-modal" aria-label="Close">&times;</button>
+      </div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">Theme</div>
+          <span class="settings-hint">Switch between light and dark</span>
+        </div>
+        <div class="theme-toggle" role="group" aria-label="Theme">
+          <button type="button" id="theme-dark" data-theme-choice="dark">Dark</button>
+          <button type="button" id="theme-light" data-theme-choice="light">Light</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rules -->
+  <div id="rules-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="rules-title">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2 id="rules-title">How to play</h2>
+        <button type="button" class="modal-close" data-close-modal="rules-modal" aria-label="Close">&times;</button>
+      </div>
+      <div class="rules-body">
+        <section>
+          <h3>Goal</h3>
+          <p>Be the first to reach <strong>11 points</strong>. Play with 2–4 players (friends or AI).</p>
+        </section>
+        <section>
+          <h3>Each round</h3>
+          <ul>
+            <li>Everyone gets <strong>3 cards</strong> from the shared deck.</li>
+            <li>Assign each card to one stat: <strong>Power</strong>, <strong>Speed</strong>, or <strong>Intelligence</strong>.</li>
+            <li>Lock in when ready. When all players lock in, three challenges resolve.</li>
+          </ul>
+        </section>
+        <section>
+          <h3>Challenges</h3>
+          <p>One challenge runs for each stat. Your card in that slot competes against everyone else’s.</p>
+          <ul>
+            <li><strong>Family trump first</strong>: Fire beats Metal, Metal beats Earth, Earth beats Water, Water beats Fire.</li>
+            <li>If trump doesn’t decide (same family, or no trump link), the <strong>higher stat number</strong> wins.</li>
+            <li>Exact ties award <strong>no point</strong>.</li>
+          </ul>
+          <div class="rules-trump" aria-label="Trump cycle">
+            <span class="trump-chip">Fire → Metal</span>
+            <span class="trump-chip">Metal → Earth</span>
+            <span class="trump-chip">Earth → Water</span>
+            <span class="trump-chip">Water → Fire</span>
+          </div>
+        </section>
+        <section>
+          <h3>Special cards</h3>
+          <p><strong>Frostpaw Banas</strong> (Special) skips family trump. When a Special card is involved, compare the stat numbers instead.</p>
+        </section>
+        <section>
+          <h3>3–4 players</h3>
+          <p>Each player challenges the next clockwise neighbor for trump. Survivors then compare stats. Only one winner (or a tie) gets the challenge point.</p>
+        </section>
+        <section>
+          <h3>Winning</h3>
+          <p>Win a challenge to gain <strong>1 point</strong>. First to <strong>11</strong> wins the game. Review the final round, then see victory.</p>
+        </section>
+        <a
+          class="rules-link-out"
+          href="https://docs.google.com/document/d/1yB57wDSmzrSs7YQGW2bw1TqE4wvxY6GLYf1xPrsnVvs/edit?usp=sharing"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Full rules document ↗</a>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 

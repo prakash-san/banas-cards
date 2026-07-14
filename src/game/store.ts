@@ -21,9 +21,12 @@ interface Room {
   sockets: Map<string, WebSocket>;
   playerOrder: string[];
   aiTimers: ReturnType<typeof setTimeout>[];
+  /** Delay room teardown so a reconnecting client can reclaim the seat. */
+  emptyRoomTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const rooms = new Map<string, Room>();
+const EMPTY_ROOM_GRACE_MS = 30_000;
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -100,9 +103,46 @@ function broadcast(room: Room): void {
 
 function getRoomByPlayer(playerId: string): Room | undefined {
   for (const room of rooms.values()) {
-    if (room.sockets.has(playerId)) return room;
+    if (room.state.players.some((p) => p.id === playerId && !p.isAi)) {
+      return room;
+    }
   }
   return undefined;
+}
+
+/**
+ * Ensure this live WebSocket is the one registered for the player.
+ * Recovers from reconnect races where a stale close wiped the map entry.
+ */
+export function bindPlayerSocket(playerId: string, ws: WebSocket): boolean {
+  const room = getRoomByPlayer(playerId);
+  if (!room) return false;
+  const player = room.state.players.find((p) => p.id === playerId);
+  if (!player || player.isAi) return false;
+
+  cancelEmptyRoomTimer(room);
+  player.connected = true;
+  if (room.sockets.get(playerId) !== ws) {
+    room.sockets.set(playerId, ws);
+  }
+  return true;
+}
+
+function cancelEmptyRoomTimer(room: Room): void {
+  if (room.emptyRoomTimer) {
+    clearTimeout(room.emptyRoomTimer);
+    room.emptyRoomTimer = null;
+  }
+}
+
+function scheduleEmptyRoomCleanup(room: Room): void {
+  cancelEmptyRoomTimer(room);
+  room.emptyRoomTimer = setTimeout(() => {
+    room.emptyRoomTimer = null;
+    if (room.sockets.size > 0) return;
+    clearAiTimers(room);
+    rooms.delete(room.state.roomCode);
+  }, EMPTY_ROOM_GRACE_MS);
 }
 
 function resolveRoundIfReady(room: Room): void {
@@ -191,6 +231,7 @@ function setupRoom(
     sockets: new Map([[hostId, hostWs]]),
     playerOrder: players.map((p) => p.id),
     aiTimers: [],
+    emptyRoomTimer: null,
   };
   rooms.set(roomCode, room);
   return room;
@@ -309,23 +350,47 @@ export function reconnectPlayer(
   const player = room.state.players.find((p) => p.id === playerId);
   if (!player || player.isAi) return false;
 
+  cancelEmptyRoomTimer(room);
   player.connected = true;
+
+  // Bind the new socket first, then close any stale prior connection.
+  const previous = room.sockets.get(playerId);
   room.sockets.set(playerId, ws);
+  if (previous && previous !== ws && previous.readyState === previous.OPEN) {
+    try {
+      previous.close();
+    } catch {
+      // Ignore close errors on the superseded connection.
+    }
+  }
   broadcast(room);
   return true;
 }
 
-export function handleDisconnect(playerId: string): void {
+/**
+ * Mark a player disconnected. Only detach if `ws` is still the socket bound to
+ * this player — otherwise a reconnect that beat the old close handler would
+ * wipe the new connection and freeze the game.
+ */
+export function handleDisconnect(playerId: string, ws?: WebSocket): void {
   const room = getRoomByPlayer(playerId);
   if (!room) return;
 
+  const current = room.sockets.get(playerId);
+  if (ws && current && current !== ws) {
+    // Stale close event from a replaced connection — leave the new socket alone.
+    return;
+  }
+
   const player = room.state.players.find((p) => p.id === playerId);
   if (player) player.connected = false;
-  room.sockets.delete(playerId);
+  if (!ws || current === ws || !current) {
+    room.sockets.delete(playerId);
+  }
 
   if (room.sockets.size === 0) {
-    clearAiTimers(room);
-    rooms.delete(room.state.roomCode);
+    scheduleEmptyRoomCleanup(room);
+    broadcast(room);
     return;
   }
 
