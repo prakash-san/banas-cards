@@ -375,20 +375,27 @@ function renderWaiting() {
   const humanCount = state.players.filter((p) => !p.isAi).length;
   document.getElementById("waiting-hint").textContent =
   aiCount > 0
-    ? `${state.players.length}/4 players (${aiCount} AI) · Share code ${state.roomCode}`
-    : `${state.players.length}/4 players · Share code ${state.roomCode}`;
+    ? `${state.players.length}/4 players (${aiCount} AI) · max 4 including bots · Share code ${state.roomCode}`
+    : `${state.players.length}/4 players · max 4 including bots · Share code ${state.roomCode}`;
 
   const hostControls = document.getElementById("host-controls");
   const hostWait = document.getElementById("host-wait-msg");
   const startBtn = document.getElementById("btn-start");
   const addAiBtn = document.getElementById("btn-add-ai");
+  const seatsLeft = 4 - state.players.length;
 
   if (isHost) {
     hostControls.hidden = false;
     hostWait.hidden = true;
     startBtn.disabled = state.players.length < 2;
     startBtn.textContent = state.players.length < 2 ? "Need 2+ players" : "Start Game";
-    addAiBtn.hidden = state.players.length >= 4;
+    addAiBtn.hidden = seatsLeft <= 0;
+    addAiBtn.textContent =
+      seatsLeft <= 0
+        ? "Room full (4 max)"
+        : seatsLeft === 1
+          ? "+ Add AI Opponent (1 seat left)"
+          : `+ Add AI Opponent (${seatsLeft} seats left)`;
   } else {
     hostControls.hidden = true;
     hostWait.hidden = false;
@@ -408,7 +415,7 @@ function updateSelectedHint() {
     return;
   }
   hint.hidden = false;
-  nameEl.textContent = card.name;
+  nameEl.textContent = `${card.name} — ${card.flavor}`;
 }
 
 function cardEl(card, { inHand = false, inSlot = false } = {}) {
@@ -420,10 +427,7 @@ function cardEl(card, { inHand = false, inSlot = false } = {}) {
   if (inHand) div.dataset.inHand = "true";
   if (inSlot) div.dataset.inSlot = "true";
   div.innerHTML = `
-    <img src="${card.image}" alt="${escapeHtml(card.name)}" loading="lazy" draggable="false" />
-    <div class="card-meta">
-      <div class="card-stats">P${card.power} · S${card.speed} · I${card.intelligence}</div>
-    </div>`;
+    <img src="${card.image}" alt="${escapeHtml(card.name)}: ${escapeHtml(card.flavor)}" loading="lazy" draggable="false" />`;
 
   if (inHand && !IS_TOUCH) {
     div.draggable = true;
@@ -676,11 +680,8 @@ function renderResults() {
 
 function cardHtmlSmall(card) {
   return `
-    <div class="banas-card family-${card.family}" title="${escapeHtml(card.name)} — P${card.power} · S${card.speed} · I${card.intelligence}">
-      <img src="${card.image}" alt="${escapeHtml(card.name)}" draggable="false" />
-      <div class="card-meta">
-        <div class="card-stats">P${card.power} · S${card.speed} · I${card.intelligence}</div>
-      </div>
+    <div class="banas-card family-${card.family}" title="${escapeHtml(card.name)} — ${escapeHtml(card.flavor)} — P${card.power} · S${card.speed} · I${card.intelligence}">
+      <img src="${card.image}" alt="${escapeHtml(card.name)}: ${escapeHtml(card.flavor)}" draggable="false" />
     </div>`;
 }
 
