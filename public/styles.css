@@ -66,6 +66,19 @@ body {
   margin-top: 0.25rem;
 }
 
+.site-footer {
+  text-align: center;
+  padding: 1.5rem 1rem 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.site-footer p {
+  color: var(--muted);
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
 #app {
   max-width: 1100px;
   margin: 0 auto;
