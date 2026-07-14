@@ -261,7 +261,7 @@ export function createRoomVsAi(
   ws: WebSocket,
   aiCount: number
 ): { roomCode: string; playerId: string } {
-  const count = Math.max(1, Math.min(3, aiCount));
+  const count = Math.max(1, Math.min(MAX_PLAYERS - 1, aiCount));
   const roomCode = generateRoomCode();
   const playerId = generatePlayerId();
   const host: Player = {
@@ -298,8 +298,8 @@ export function addAiOpponents(
   if (!player?.isHost) return "Only the host can add AI opponents.";
   if (room.state.phase !== "lobby") return "Game already in progress.";
 
-  const toAdd = Math.max(1, Math.min(count, MAX_PLAYERS - room.state.players.length));
-  if (toAdd <= 0) return "Room is full.";
+  const toAdd = Math.max(0, Math.min(count, MAX_PLAYERS - room.state.players.length));
+  if (toAdd <= 0) return `Room is full (max ${MAX_PLAYERS} players including AI).`;
 
   for (let i = 0; i < toAdd; i++) {
     const ai = createAiPlayer();
@@ -319,7 +319,9 @@ export function joinRoom(
   const room = rooms.get(roomCode.toUpperCase());
   if (!room) return { error: "Room not found." };
   if (room.state.phase !== "lobby") return { error: "Game already in progress." };
-  if (room.state.players.length >= MAX_PLAYERS) return { error: "Room is full (max 4 players)." };
+  if (room.state.players.length >= MAX_PLAYERS) {
+    return { error: `Room is full (max ${MAX_PLAYERS} players including AI).` };
+  }
 
   const playerId = generatePlayerId();
   const player: Player = {

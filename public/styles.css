@@ -14,10 +14,10 @@
   --special: #48cae4;
   --radius: 16px;
   --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  --card-width: 168px;
-  --card-meta-height: 2.5rem;
+  --card-width: 248px;
+  --card-meta-height: 0px;
   --card-image-height: calc(var(--card-width) * 7 / 5);
-  --card-height: calc(var(--card-image-height) + var(--card-meta-height));
+  --card-height: var(--card-image-height);
   --header-btn-bg: rgba(254, 246, 232, 0.08);
   --header-btn-border: rgba(196, 181, 216, 0.35);
   --overlay: rgba(10, 6, 18, 0.72);
@@ -159,7 +159,7 @@ html[data-theme="light"] {
 }
 
 #app {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 1rem;
   position: relative;
@@ -266,7 +266,14 @@ input[type="text"]:focus {
 .solo-label {
   color: var(--muted);
   font-size: 0.9rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.solo-limit-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 0.65rem;
+  opacity: 0.9;
 }
 
 .ai-count-picker {
@@ -466,17 +473,22 @@ input[type="text"]:focus {
   gap: 1.25rem;
   align-items: center;
   margin-bottom: 1.5rem;
+  width: 100%;
 }
 
 .assign-row {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  gap: clamp(0.5rem, 2vw, 1rem);
+  gap: clamp(0.65rem, 2vw, 1.1rem);
   justify-content: center;
   align-items: flex-start;
   width: 100%;
-  max-width: calc(var(--card-width) * 3 + 2.5rem);
+  max-width: min(100%, calc(var(--card-width) * 3 + 2.75rem));
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.15rem 0.25rem 0.5rem;
+  scrollbar-width: thin;
 }
 
 .hand-cards {
@@ -500,8 +512,8 @@ input[type="text"]:focus {
   :root,
   [data-theme="dark"],
   [data-theme="light"] {
-    --card-width: min(156px, calc((100vw - 2.5rem) / 3 - 0.35rem));
-    --card-meta-height: 2.35rem;
+    --card-width: min(210px, calc(100vw - 3rem));
+    --card-meta-height: 0px;
   }
 
   .site-header {
@@ -530,8 +542,9 @@ input[type="text"]:focus {
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
   }
 
-  .banas-card .card-stats {
-    font-size: 0.88rem;
+  .assign-row {
+    justify-content: flex-start;
+    max-width: 100%;
   }
 }
 
@@ -539,7 +552,15 @@ input[type="text"]:focus {
   :root,
   [data-theme="dark"],
   [data-theme="light"] {
-    --card-width: 168px;
+    --card-width: 248px;
+  }
+}
+
+@media (min-width: 1100px) {
+  :root,
+  [data-theme="dark"],
+  [data-theme="light"] {
+    --card-width: 268px;
   }
 }
 
@@ -661,33 +682,17 @@ input[type="text"]:focus {
   height: var(--card-image-height);
   flex: 0 0 var(--card-image-height);
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
+  background: var(--surface-2);
 }
 
 .banas-card .card-meta {
-  height: var(--card-meta-height);
-  min-height: var(--card-meta-height);
-  max-height: var(--card-meta-height);
-  flex: 0 0 var(--card-meta-height);
-  padding: 0.35rem 0.45rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  overflow: hidden;
-  box-sizing: border-box;
+  display: none;
 }
 
 .banas-card .card-stats {
-  color: var(--text);
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.2;
-  opacity: 0.92;
-  white-space: nowrap;
-  text-align: center;
+  display: none;
 }
 
 .banas-card.family-fire { border-top: 3px solid var(--fire); }
