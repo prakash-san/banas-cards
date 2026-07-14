@@ -416,6 +416,7 @@ function cardEl(card, { inHand = false, inSlot = false } = {}) {
   div.className = `banas-card family-${card.family}`;
   if (selectedCardId === card.id) div.classList.add("selected");
   div.dataset.cardId = card.id;
+  div.title = `${card.name} — P${card.power} · S${card.speed} · I${card.intelligence}`;
   if (inHand) div.dataset.inHand = "true";
   if (inSlot) div.dataset.inSlot = "true";
   div.innerHTML = `
@@ -676,9 +677,12 @@ function renderResults() {
 
 function cardHtmlSmall(card) {
   return `
-    <div class="banas-card family-${card.family}">
+    <div class="banas-card family-${card.family}" title="${escapeHtml(card.name)} — P${card.power} · S${card.speed} · I${card.intelligence}">
       <img src="${card.image}" alt="${escapeHtml(card.name)}" draggable="false" />
-      <div class="card-meta"><div class="card-name">${escapeHtml(card.name)}</div></div>
+      <div class="card-meta">
+        <div class="card-name">${escapeHtml(card.name)}</div>
+        <div class="card-stats">P${card.power} · S${card.speed} · I${card.intelligence}</div>
+      </div>
     </div>`;
 }
 
