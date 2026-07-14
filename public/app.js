@@ -1,6 +1,7 @@
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
 
 const STORAGE_KEY = "banas-session";
+const THEME_KEY = "banas-theme";
 const IS_TOUCH = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 
 /** @type {WebSocket | null} */
@@ -79,6 +80,51 @@ function showScreen(name) {
     finished: "screen-finished",
   };
   document.getElementById(map[name])?.classList.add("active");
+}
+
+function getTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  return current === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme) {
+  const next = theme === "light" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    // ignore storage failures
+  }
+  syncThemeToggle();
+}
+
+function syncThemeToggle() {
+  const theme = getTheme();
+  document.querySelectorAll("[data-theme-choice]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.themeChoice === theme);
+  });
+}
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.hidden = true;
+  const anyOpen = [...document.querySelectorAll(".modal-backdrop")].some((m) => !m.hidden);
+  if (!anyOpen) document.body.style.overflow = "";
+}
+
+function closeAllModals() {
+  document.querySelectorAll(".modal-backdrop").forEach((m) => {
+    m.hidden = true;
+  });
+  document.body.style.overflow = "";
 }
 
 function toast(msg, type = "error") {
@@ -752,6 +798,42 @@ document.getElementById("btn-next").addEventListener("click", () => {
   }, 1200);
 });
 document.getElementById("btn-play-again").addEventListener("click", () => send({ type: "play-again" }));
+
+// Theme + modals
+syncThemeToggle();
+
+document.getElementById("btn-settings").addEventListener("click", () => {
+  closeModal("rules-modal");
+  openModal("settings-modal");
+});
+
+document.getElementById("btn-rules").addEventListener("click", () => {
+  closeModal("settings-modal");
+  openModal("rules-modal");
+});
+
+document.getElementById("btn-rules-lobby")?.addEventListener("click", () => {
+  closeModal("settings-modal");
+  openModal("rules-modal");
+});
+
+document.querySelectorAll("[data-close-modal]").forEach((btn) => {
+  btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
+});
+
+document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) closeModal(backdrop.id);
+  });
+});
+
+document.querySelectorAll("[data-theme-choice]").forEach((btn) => {
+  btn.addEventListener("click", () => applyTheme(btn.dataset.themeChoice));
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeAllModals();
+});
 
 (async () => {
   initAssignBoard();
