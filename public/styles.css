@@ -15,7 +15,9 @@
   --radius: 16px;
   --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   --card-width: 168px;
-  --card-meta-height: 3.6rem;
+  --card-meta-height: 4.5rem;
+  --card-image-height: calc(var(--card-width) * 7 / 5);
+  --card-height: calc(var(--card-image-height) + var(--card-meta-height));
   --header-btn-bg: rgba(254, 246, 232, 0.08);
   --header-btn-border: rgba(196, 181, 216, 0.35);
   --overlay: rgba(10, 6, 18, 0.72);
@@ -478,7 +480,7 @@ input[type="text"]:focus {
 }
 
 .hand-cards {
-  min-height: calc(var(--card-width) * 7 / 5 + var(--card-meta-height));
+  min-height: var(--card-height);
 }
 
 .hand-cards .hint {
@@ -486,7 +488,7 @@ input[type="text"]:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(var(--card-width) * 7 / 5 + var(--card-meta-height));
+  min-height: var(--card-height);
   width: 100%;
 }
 
@@ -499,7 +501,7 @@ input[type="text"]:focus {
   [data-theme="dark"],
   [data-theme="light"] {
     --card-width: min(156px, calc((100vw - 2.5rem) / 3 - 0.35rem));
-    --card-meta-height: 3.35rem;
+    --card-meta-height: 4.25rem;
   }
 
   .site-header {
@@ -529,11 +531,11 @@ input[type="text"]:focus {
   }
 
   .banas-card .card-name {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
   }
 
   .banas-card .card-stats {
-    font-size: 0.88rem;
+    font-size: 0.86rem;
   }
 }
 
@@ -558,7 +560,7 @@ input[type="text"]:focus {
 
 .slot-drop {
   width: var(--card-width);
-  height: calc(var(--card-width) * 7 / 5 + var(--card-meta-height));
+  height: var(--card-height);
   background: var(--surface);
   border-radius: 12px;
   border: 2px dashed var(--muted);
@@ -575,18 +577,19 @@ input[type="text"]:focus {
 .slot-drop .banas-card {
   width: 100%;
   height: 100%;
-  border-radius: 0;
+  border-radius: 10px;
   box-shadow: none;
 }
 
-.slot-drop .banas-card:hover {
+.slot-drop .banas-card:hover,
+.slot-drop .banas-card.selected {
   transform: none;
 }
 
 .slot-drop .banas-card img {
-  aspect-ratio: 5 / 7;
-  height: auto;
-  flex: 1;
+  width: 100%;
+  height: var(--card-image-height);
+  flex: 0 0 var(--card-image-height);
 }
 
 .slot-drop .slot-placeholder {
@@ -603,12 +606,12 @@ input[type="text"]:focus {
 
 .slot-drop.slot-highlight {
   border-color: var(--accent-2);
-  background: rgba(255, 209, 102, 0.08);
+  background: color-mix(in srgb, var(--accent-2) 12%, transparent);
 }
 
 .slot-drop.drag-over {
   border-color: var(--accent);
-  background: rgba(255, 140, 66, 0.08);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .slot-drop.filled {
@@ -618,24 +621,26 @@ input[type="text"]:focus {
 
 .banas-card {
   width: var(--card-width);
+  height: var(--card-height);
   cursor: pointer;
   border-radius: 12px;
   overflow: hidden;
   background: var(--surface-2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  transition: transform 0.15s, box-shadow 0.15s, outline 0.15s;
+  transition: transform 0.15s, box-shadow 0.15s, outline-color 0.15s;
   user-select: none;
   flex-shrink: 0;
   -webkit-user-select: none;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 .banas-card.selected {
   outline: 3px solid var(--accent-2);
   outline-offset: 2px;
-  transform: translateY(-4px) scale(1.04);
-  box-shadow: 0 8px 24px rgba(255, 209, 102, 0.35);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent-2) 35%, transparent);
 }
 
 .banas-card[draggable="true"] {
@@ -647,8 +652,8 @@ input[type="text"]:focus {
 }
 
 .banas-card:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .banas-card.dragging {
@@ -657,36 +662,49 @@ input[type="text"]:focus {
 
 .banas-card img {
   width: 100%;
+  height: var(--card-image-height);
+  flex: 0 0 var(--card-image-height);
   display: block;
-  aspect-ratio: 5/7;
   object-fit: cover;
+  object-position: center;
 }
 
 .banas-card .card-meta {
-  padding: 0.55rem 0.6rem 0.6rem;
+  height: var(--card-meta-height);
   min-height: var(--card-meta-height);
+  max-height: var(--card-meta-height);
+  flex: 0 0 var(--card-meta-height);
+  padding: 0.4rem 0.5rem 0.45rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.2rem;
+  gap: 0.15rem;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .banas-card .card-name {
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   line-height: 1.2;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .banas-card .card-stats {
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  line-height: 1.25;
+  line-height: 1.2;
   opacity: 0.92;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .banas-card.family-fire { border-top: 3px solid var(--fire); }
@@ -760,6 +778,7 @@ input[type="text"]:focus {
 
 .challenge-play .banas-card {
   width: var(--card-width);
+  height: var(--card-height);
 }
 
 .challenge-outcome {
