@@ -131,6 +131,16 @@ export const ALL_CARDS: Card[] = [
     flavor: "Lives in snowy trees and makes tiny ice sculptures",
     image: "/cards/frostpaw-banas.jpg",
   },
+  {
+    id: "poseidon-banas",
+    name: "Poseidon Banas",
+    family: "special",
+    power: 50,
+    speed: 100,
+    intelligence: 50,
+    flavor: "Rules the tides with a paddle-sized trident and endless pancake enthusiasm",
+    image: "/cards/poseidon-banas.jpg",
+  },
 ];
 
 const cardById = new Map(ALL_CARDS.map((c) => [c.id, c]));

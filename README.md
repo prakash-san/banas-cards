@@ -27,11 +27,11 @@ On phones/tablets, **tap a card** to select it, then **tap a stat slot** to assi
 ## How it works
 
 1. **Create or join** a room (2–4 players)
-2. Each round, you receive **3 random cards** from the 13-card deck
+2. Each round, you receive **3 random cards** from the 14-card deck
 3. **Assign** each card to Power, Speed, or Intelligence
 4. Three challenges resolve each round:
    - **Family trump** (Fire → Metal → Earth → Water → Fire)
-   - Special cards (Frostpaw Banas) skip trump
+   - Special cards (Frostpaw Banas, Poseidon Banas) skip trump
    - Highest stat wins if trump doesn't decide
 5. First player to **11 points** wins
 
@@ -52,6 +52,7 @@ On phones/tablets, **tap a card** to select it, then **tap a stat slot** to assi
 | Mud Banas | Earth | 40 | 20 | 50 |
 | Grass Banas | Earth | 35 | 25 | 65 |
 | Frostpaw Banas | Special | 90 | 50 | 60 |
+| Poseidon Banas | Special | 50 | 100 | 50 |
 
 ## Tech
 
