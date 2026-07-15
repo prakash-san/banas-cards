@@ -94,11 +94,42 @@ html[data-theme="light"] {
 
 .header-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
   max-width: 1100px;
   margin: 0 auto 0.75rem;
+  min-height: 40px;
+}
+
+.header-toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.header-btn-exit[hidden] {
+  display: none !important;
+}
+
+.btn-leave {
+  margin-top: 0.25rem;
+}
+
+.victory-panel .btn-leave {
+  margin-top: 0.75rem;
+}
+
+.assign-actions,
+.results-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .header-btn {
@@ -819,13 +850,6 @@ input[type="text"]:focus {
   font-size: 0.9rem;
   color: var(--muted);
   line-height: 1.45;
-}
-
-.results-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
 }
 
 .victory-panel {

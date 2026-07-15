@@ -36,7 +36,10 @@ let intentionalClose = false;
 let reconnectTimer = null;
 /** @type {number} */
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 8;
+/** @type {ReturnType<typeof setInterval> | null} */
+let heartbeatTimer = null;
+const MAX_RECONNECT_ATTEMPTS = 12;
+const HEARTBEAT_MS = 20_000;
 
 function handsChanged(prev, next) {
   const a = prev?.myHand;
@@ -80,6 +83,8 @@ function showScreen(name) {
     finished: "screen-finished",
   };
   document.getElementById(map[name])?.classList.add("active");
+  const exitBtn = document.getElementById("btn-exit");
+  if (exitBtn) exitBtn.hidden = name === "lobby";
 }
 
 function getTheme() {
@@ -135,10 +140,62 @@ function toast(msg, type = "error") {
   setTimeout(() => { el.hidden = true; }, 3500);
 }
 
+function resetLocalGame() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  stopHeartbeat();
+  intentionalClose = true;
+  clearSavedSession();
+  playerId = null;
+  roomCode = null;
+  state = null;
+  isHost = false;
+  selectedCardId = null;
+  assignments = { power: null, speed: null, intelligence: null };
+  isDragging = false;
+  pendingAssignRender = false;
+  attemptingReconnect = false;
+  reconnectAttempts = 0;
+  showScreen("lobby");
+  queueMicrotask(() => {
+    intentionalClose = false;
+    if (ws?.readyState === WebSocket.OPEN) startHeartbeat();
+  });
+}
+
+function exitToLobby() {
+  if (!playerId && !roomCode) {
+    showScreen("lobby");
+    return;
+  }
+  if (!confirm("Leave this game and return to the lobby?")) return;
+  intentionalClose = true;
+  send({ type: "leave" });
+  resetLocalGame();
+}
+
 function saveSession() {
   if (playerId && roomCode) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ playerId, roomCode }));
   }
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ping" }));
+    }
+  }, HEARTBEAT_MS);
 }
 
 function syncSubmitButton() {
@@ -169,6 +226,7 @@ function connect() {
   return new Promise((resolve, reject) => {
     if (ws) {
       intentionalClose = true;
+      stopHeartbeat();
       ws.onclose = null;
       ws.onerror = null;
       ws.onmessage = null;
@@ -183,33 +241,49 @@ function connect() {
     ws = new WebSocket(WS_URL);
     ws.onopen = () => {
       reconnectAttempts = 0;
+      startHeartbeat();
       resolve();
     };
     ws.onerror = () => reject(new Error("Connection failed"));
     ws.onmessage = (ev) => handleMessage(JSON.parse(ev.data));
     ws.onclose = () => {
+      stopHeartbeat();
       if (intentionalClose || attemptingReconnect) return;
       if (playerId && roomCode) {
         toast("Connection lost — reconnecting…", "info");
         scheduleReconnect();
         return;
       }
-      toast("Disconnected. Refresh to reconnect.", "info");
+      toast("Disconnected. Reconnecting when possible…", "info");
     };
   });
 }
 
 function scheduleReconnect() {
-  if (reconnectTimer || attemptingReconnect) return;
+  if (reconnectTimer || intentionalClose) return;
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    toast("Could not reconnect. Refresh the page.", "error");
+    failReconnectSilently();
+    toast("Could not reconnect. Start a new game.", "error");
     return;
   }
 
-  const delay = Math.min(1000 * 2 ** reconnectAttempts, 8000);
+  const delay = Math.min(1000 * 2 ** reconnectAttempts, 15000);
   reconnectAttempts += 1;
   reconnectTimer = setTimeout(async () => {
     reconnectTimer = null;
+    if (intentionalClose) return;
+    if (!playerId || !roomCode) {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const session = JSON.parse(saved);
+          playerId = session.playerId || null;
+          roomCode = session.roomCode || null;
+        } catch {
+          // ignore
+        }
+      }
+    }
     if (!playerId || !roomCode) return;
     attemptingReconnect = true;
     try {
@@ -220,7 +294,7 @@ function scheduleReconnect() {
           attemptingReconnect = false;
           scheduleReconnect();
         }
-      }, 3000);
+      }, 4000);
     } catch {
       attemptingReconnect = false;
       scheduleReconnect();
@@ -261,24 +335,30 @@ function send(data) {
 
 function handleMessage(msg) {
   switch (msg.type) {
+    case "pong":
+      break;
     case "joined":
     case "reconnected":
       attemptingReconnect = false;
       reconnectAttempts = 0;
       playerId = msg.playerId;
       if (msg.roomCode) roomCode = msg.roomCode;
+      else if (msg.state?.roomCode) roomCode = msg.state.roomCode;
       if (msg.state) applyState(msg.state);
       saveSession();
+      if (msg.type === "reconnected") toast("Reconnected — game resumed.", "info");
       break;
     case "reconnect-failed":
       failReconnectSilently();
+      toast("Could not resume — room is gone. Start a new game.", "error");
       break;
     case "state":
       if (playerId && msg.states?.[playerId]) applyState(msg.states[playerId]);
       break;
     case "error":
       if (attemptingReconnect) {
-        failReconnectSilently();
+        attemptingReconnect = false;
+        scheduleReconnect();
         break;
       }
       toast(msg.message);
@@ -291,6 +371,9 @@ function handleMessage(msg) {
         const nextBtn = document.getElementById("btn-next");
         if (nextBtn) nextBtn.disabled = false;
       }
+      break;
+    case "left":
+      resetLocalGame();
       break;
   }
 }
@@ -802,6 +885,32 @@ document.getElementById("btn-next").addEventListener("click", () => {
 });
 document.getElementById("btn-play-again").addEventListener("click", () => send({ type: "play-again" }));
 
+document.getElementById("btn-exit").addEventListener("click", exitToLobby);
+document.querySelectorAll(".btn-leave").forEach((btn) => {
+  btn.addEventListener("click", exitToLobby);
+});
+
+function tryResumeWhenOnline() {
+  if (intentionalClose) return;
+  if (ws?.readyState === WebSocket.OPEN) return;
+  if (!(playerId && roomCode)) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      if (!saved?.playerId || !saved?.roomCode) return;
+      playerId = saved.playerId;
+      roomCode = saved.roomCode;
+    } catch {
+      return;
+    }
+  }
+  scheduleReconnect();
+}
+
+window.addEventListener("online", tryResumeWhenOnline);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") tryResumeWhenOnline();
+});
+
 // Theme + modals
 syncThemeToggle();
 
@@ -859,14 +968,19 @@ document.addEventListener("keydown", (e) => {
   }
 
   attemptingReconnect = true;
+  playerId = pid;
+  roomCode = code;
   try {
     await connect();
     send({ type: "reconnect", playerId: pid, roomCode: code });
-    // If the server doesn't respond within 3s, treat session as expired
     setTimeout(() => {
-      if (attemptingReconnect) failReconnectSilently();
-    }, 3000);
+      if (attemptingReconnect) {
+        attemptingReconnect = false;
+        scheduleReconnect();
+      }
+    }, 4000);
   } catch {
-    failReconnectSilently();
+    attemptingReconnect = false;
+    scheduleReconnect();
   }
 })();

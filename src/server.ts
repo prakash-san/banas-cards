@@ -13,6 +13,7 @@ import {
   getRoomState,
   handleDisconnect,
   joinRoom,
+  leaveRoom,
   nextRound,
   playAgain,
   reconnectPlayer,
@@ -26,6 +27,7 @@ import { MAX_PLAYERS, MIN_PLAYERS, WINNING_SCORE } from "./game/types.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
 const PORT = Number(process.env.PORT) || 3456;
+const HEARTBEAT_MS = 25_000;
 
 const app = express();
 app.use(express.json());
@@ -55,14 +57,35 @@ interface ClientMessage {
   aiCount?: number;
 }
 
+type AliveSocket = WebSocket & { isAlive?: boolean };
+
 function send(ws: WebSocket, data: unknown): void {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(data));
   }
 }
 
-wss.on("connection", (ws) => {
+const heartbeat = setInterval(() => {
+  for (const client of wss.clients) {
+    const ws = client as AliveSocket;
+    if (ws.isAlive === false) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, HEARTBEAT_MS);
+
+wss.on("close", () => clearInterval(heartbeat));
+
+wss.on("connection", (ws: AliveSocket) => {
   let playerId: string | null = null;
+  ws.isAlive = true;
+
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
 
   ws.on("message", (raw) => {
     let msg: ClientMessage;
@@ -79,6 +102,12 @@ wss.on("connection", (ws) => {
     }
 
     switch (msg.type) {
+      case "ping": {
+        ws.isAlive = true;
+        send(ws, { type: "pong" });
+        break;
+      }
+
       case "create-vs-ai": {
         const name = msg.playerName ?? "Player";
         const aiCount = msg.aiCount ?? 1;
@@ -148,10 +177,11 @@ wss.on("connection", (ws) => {
           return;
         }
         playerId = msg.playerId;
-        const state = getRoomState(msg.roomCode);
+        const code = msg.roomCode.toUpperCase();
+        const state = getRoomState(code);
         send(ws, {
           type: "reconnected",
-          roomCode: msg.roomCode.toUpperCase(),
+          roomCode: code,
           playerId: msg.playerId,
           state: state ? toClientState(state, msg.playerId) : null,
         });
@@ -190,6 +220,14 @@ wss.on("connection", (ws) => {
         if (!playerId) return;
         const err = playAgain(playerId);
         if (err) send(ws, { type: "error", message: err });
+        break;
+      }
+
+      case "leave": {
+        if (!playerId) return;
+        leaveRoom(playerId);
+        playerId = null;
+        send(ws, { type: "left" });
         break;
       }
 

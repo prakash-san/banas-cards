@@ -28,16 +28,21 @@
 
   <header class="site-header">
     <div class="header-toolbar">
-      <button type="button" id="btn-rules" class="header-btn" aria-haspopup="dialog">
-        Rules
+      <button type="button" id="btn-exit" class="header-btn header-btn-exit" hidden title="Leave game">
+        Exit
       </button>
-      <button type="button" id="btn-settings" class="header-btn" aria-haspopup="dialog" aria-label="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-        </svg>
-        <span class="header-btn-label">Settings</span>
-      </button>
+      <div class="header-toolbar-end">
+        <button type="button" id="btn-rules" class="header-btn" aria-haspopup="dialog">
+          Rules
+        </button>
+        <button type="button" id="btn-settings" class="header-btn" aria-haspopup="dialog" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+          </svg>
+          <span class="header-btn-label">Settings</span>
+        </button>
+      </div>
     </div>
     <h1>🐻 Banas Cards</h1>
     <p class="tagline">Strategy, luck &amp; quick thinking — first to 11 wins!</p>
@@ -95,6 +100,7 @@
           <button id="btn-start" class="btn btn-primary">Start Game</button>
         </div>
         <p id="host-wait-msg" class="hint">Waiting for host to start…</p>
+        <button id="btn-leave-waiting" class="btn btn-secondary btn-leave" type="button">Exit to Lobby</button>
       </div>
     </section>
 
@@ -130,7 +136,10 @@
         </div>
       </div>
 
-      <button id="btn-submit" class="btn btn-primary" disabled>Lock In Choices</button>
+      <div class="assign-actions">
+        <button id="btn-submit" class="btn btn-primary" disabled>Lock In Choices</button>
+        <button id="btn-leave-assign" class="btn btn-secondary btn-leave" type="button">Exit to Lobby</button>
+      </div>
     </section>
 
     <!-- Round results -->
@@ -142,6 +151,7 @@
       <div class="results-actions">
         <button id="btn-next" class="btn btn-primary" hidden>Next Round →</button>
         <p id="results-wait" class="hint">Waiting for host to continue…</p>
+        <button id="btn-leave-results" class="btn btn-secondary btn-leave" type="button">Exit to Lobby</button>
       </div>
     </section>
 
@@ -151,6 +161,7 @@
         <h2 id="winner-text">🎉 Winner!</h2>
         <div class="scoreboard" id="scoreboard-final"></div>
         <button id="btn-play-again" class="btn btn-primary" hidden>Play Again</button>
+        <button id="btn-leave-finished" class="btn btn-secondary btn-leave" type="button">Exit to Lobby</button>
       </div>
     </section>
   </main>

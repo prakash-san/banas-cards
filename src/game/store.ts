@@ -26,7 +26,8 @@ interface Room {
 }
 
 const rooms = new Map<string, Room>();
-const EMPTY_ROOM_GRACE_MS = 30_000;
+/** Keep empty rooms in memory briefly so a drop can resume without persistence. */
+const EMPTY_ROOM_GRACE_MS = 2 * 60 * 1000;
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -135,13 +136,18 @@ function cancelEmptyRoomTimer(room: Room): void {
   }
 }
 
+function destroyRoom(room: Room): void {
+  clearAiTimers(room);
+  cancelEmptyRoomTimer(room);
+  rooms.delete(room.state.roomCode);
+}
+
 function scheduleEmptyRoomCleanup(room: Room): void {
   cancelEmptyRoomTimer(room);
   room.emptyRoomTimer = setTimeout(() => {
     room.emptyRoomTimer = null;
     if (room.sockets.size > 0) return;
-    clearAiTimers(room);
-    rooms.delete(room.state.roomCode);
+    destroyRoom(room);
   }, EMPTY_ROOM_GRACE_MS);
 }
 
@@ -397,6 +403,40 @@ export function handleDisconnect(playerId: string, ws?: WebSocket): void {
   }
 
   broadcast(room);
+}
+
+/** Fully removes a player and returns them to a clean lobby-ready state. */
+export function leaveRoom(playerId: string): boolean {
+  const room = getRoomByPlayer(playerId);
+  if (!room) return false;
+
+  const leaving = room.state.players.find((p) => p.id === playerId);
+  if (!leaving || leaving.isAi) return false;
+
+  room.sockets.delete(playerId);
+  room.state.players = room.state.players.filter((p) => p.id !== playerId);
+  room.playerOrder = room.playerOrder.filter((id) => id !== playerId);
+  room.state.hands = room.state.hands.filter((h) => h.playerId !== playerId);
+
+  const humansLeft = room.state.players.filter((p) => !p.isAi);
+  if (humansLeft.length === 0) {
+    destroyRoom(room);
+    return true;
+  }
+
+  if (leaving.isHost) {
+    const nextHost = humansLeft[0];
+    for (const p of room.state.players) p.isHost = p.id === nextHost.id;
+  }
+
+  if (room.state.phase === "assigning") {
+    resolveRoundIfReady(room);
+    if (room.state.phase === "assigning") broadcast(room);
+  } else {
+    broadcast(room);
+  }
+
+  return true;
 }
 
 export function startGame(playerId: string): string | null {
