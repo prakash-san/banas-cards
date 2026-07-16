@@ -52,30 +52,31 @@
     <!-- Lobby -->
     <section id="screen-lobby" class="screen active">
       <div class="card-panel lobby-panel">
-        <label class="field">
-          <span>Your name</span>
-          <input id="player-name" type="text" maxlength="20" placeholder="Aditya" autocomplete="nickname" />
-        </label>
-
         <div class="lobby-actions">
-          <button id="btn-create" class="btn btn-primary">Create Game</button>
-          <div class="divider"><span>or</span></div>
+          <button id="btn-create" class="btn btn-primary" type="button">Create Game</button>
+
           <div class="solo-section">
-            <p class="solo-label">Play vs AI</p>
-            <p class="solo-limit-hint">You + bots = max 4 players total</p>
-            <div class="ai-count-picker">
+            <button id="btn-vs-ai" class="btn btn-accent" type="button">Play with AI</button>
+            <p class="solo-limit-hint">You + bots = max 4 players</p>
+            <div class="ai-count-picker" aria-label="Number of AI bots">
               <button type="button" class="ai-count-btn active" data-count="1">1 Bot</button>
               <button type="button" class="ai-count-btn" data-count="2">2 Bots</button>
               <button type="button" class="ai-count-btn" data-count="3">3 Bots</button>
             </div>
-            <button id="btn-vs-ai" class="btn btn-accent">Start vs AI</button>
           </div>
-          <div class="divider"><span>or join</span></div>
-          <label class="field">
-            <span>Room code</span>
-            <input id="room-code" type="text" maxlength="4" placeholder="ABCD" class="room-input" />
-          </label>
-          <button id="btn-join" class="btn btn-secondary">Join Game</button>
+
+          <div class="join-row">
+            <input
+              id="room-code"
+              type="text"
+              maxlength="4"
+              placeholder="Enter the code shared with you"
+              class="room-input"
+              autocomplete="off"
+              aria-label="Room code"
+            />
+            <button id="btn-join" class="btn btn-secondary" type="button">Join Game</button>
+          </div>
         </div>
 
         <p class="rules-summary">
@@ -170,12 +171,37 @@
     <p>© 2026 Aditya Prakash. All rights reserved.</p>
   </footer>
 
+  <!-- Welcome name (first visit) -->
+  <div id="name-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="name-title">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2 id="name-title">Welcome!</h2>
+      </div>
+      <p class="settings-hint name-modal-intro">What should we call you?</p>
+      <label class="field">
+        <span class="visually-hidden">Your name</span>
+        <input id="welcome-name" type="text" maxlength="20" placeholder="Enter your name" autocomplete="nickname" />
+      </label>
+      <button type="button" id="btn-save-welcome-name" class="btn btn-primary">Continue</button>
+    </div>
+  </div>
+
   <!-- Settings -->
   <div id="settings-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-panel">
       <div class="modal-header">
         <h2 id="settings-title">Settings</h2>
         <button type="button" class="modal-close" data-close-modal="settings-modal" aria-label="Close">&times;</button>
+      </div>
+      <div class="settings-row settings-row-stack">
+        <div>
+          <div class="settings-label">Your name</div>
+          <span class="settings-hint">Used when you create or join a game</span>
+        </div>
+        <div class="settings-name-edit">
+          <input id="settings-name" type="text" maxlength="20" placeholder="Enter your name" autocomplete="nickname" />
+          <button type="button" id="btn-save-settings-name" class="btn btn-secondary btn-compact">Save</button>
+        </div>
       </div>
       <div class="settings-row">
         <div>

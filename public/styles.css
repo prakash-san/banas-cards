@@ -226,6 +226,18 @@ html[data-theme="light"] {
   margin-bottom: 0.35rem;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 input[type="text"] {
   width: 100%;
   padding: 0.75rem 1rem;
@@ -244,9 +256,18 @@ input[type="text"]:focus {
 
 .room-input {
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-align: center;
   font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.room-input::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  font-size: 0.78rem;
+  opacity: 0.75;
 }
 
 .btn {
@@ -290,27 +311,29 @@ input[type="text"]:focus {
   color: #fff;
 }
 
-.solo-section {
-  text-align: center;
+.btn-compact {
+  width: auto;
+  padding: 0.65rem 1rem;
+  flex-shrink: 0;
 }
 
-.solo-label {
-  color: var(--muted);
-  font-size: 0.9rem;
-  margin-bottom: 0.35rem;
+.solo-section {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .solo-limit-hint {
   color: var(--muted);
   font-size: 0.8rem;
-  margin-bottom: 0.65rem;
   opacity: 0.9;
+  margin: 0;
 }
 
 .ai-count-picker {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
 }
 
 .ai-count-btn {
@@ -343,31 +366,48 @@ input[type="text"]:focus {
 .lobby-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-.divider {
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.85rem;
-  position: relative;
+.join-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
 }
 
-.divider span {
-  background: var(--surface);
-  padding: 0 0.75rem;
-  position: relative;
-  z-index: 1;
+.join-row .room-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
-.divider::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 1px;
-  background: var(--surface-2);
+.join-row .btn {
+  width: auto;
+  flex-shrink: 0;
+  padding-left: 1.1rem;
+  padding-right: 1.1rem;
+  white-space: nowrap;
+}
+
+.name-modal-intro {
+  margin: 0 0 0.75rem;
+}
+
+.settings-name-edit {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.65rem;
+}
+
+.settings-name-edit input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-row-stack {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .rules-summary {
@@ -769,6 +809,7 @@ input[type="text"]:focus {
   flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 0.75rem;
+  justify-content: center;
 }
 
 .challenge-play {
@@ -776,8 +817,14 @@ input[type="text"]:focus {
   font-size: 0.85rem;
 }
 
-.challenge-play-winner .player-name {
+.challenge-play-winner .player-name,
+.trump-node.is-winner .player-name {
   color: var(--accent-2);
+}
+
+.challenge-play.is-eliminated,
+.trump-node.is-eliminated {
+  opacity: 0.45;
 }
 
 .play-stat {
@@ -790,7 +837,8 @@ input[type="text"]:focus {
   color: var(--accent-2);
 }
 
-.challenge-play .player-name {
+.challenge-play .player-name,
+.trump-node .player-name {
   font-weight: 600;
   margin-bottom: 0.35rem;
 }
@@ -798,6 +846,116 @@ input[type="text"]:focus {
 .challenge-play .banas-card {
   width: var(--card-width);
   height: var(--card-height);
+}
+
+.trump-diagram {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto 0.75rem;
+  --trump-card-w: min(120px, 28vw);
+  --trump-card-h: calc(var(--trump-card-w) * 7 / 5);
+}
+
+.trump-diagram .banas-card {
+  width: var(--trump-card-w);
+  height: var(--trump-card-h);
+}
+
+.trump-arrows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+
+.trump-arrow-line {
+  stroke: #ff8c42;
+  stroke-width: 3;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.trump-node {
+  position: absolute;
+  z-index: 2;
+  text-align: center;
+  font-size: 0.8rem;
+  width: calc(var(--trump-card-w) + 0.5rem);
+  transform: translate(-50%, -50%);
+}
+
+.trump-node.is-winner .banas-card {
+  box-shadow: 0 0 0 3px var(--accent-2), var(--shadow);
+}
+
+/* Triangle: top, bottom-left, bottom-right */
+.trump-diagram-triangle {
+  aspect-ratio: 1.15 / 1;
+  min-height: 280px;
+}
+
+.trump-diagram-triangle .seat-0 { left: 50%; top: 18%; }
+.trump-diagram-triangle .seat-1 { left: 18%; top: 78%; }
+.trump-diagram-triangle .seat-2 { left: 82%; top: 78%; }
+
+/* Diamond: top, right, bottom, left */
+.trump-diagram-diamond {
+  aspect-ratio: 1 / 1;
+  min-height: 320px;
+}
+
+.trump-diagram-diamond .seat-0 { left: 50%; top: 12%; }
+.trump-diagram-diamond .seat-1 { left: 86%; top: 50%; }
+.trump-diagram-diamond .seat-2 { left: 50%; top: 88%; }
+.trump-diagram-diamond .seat-3 { left: 14%; top: 50%; }
+
+.trump-legend {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: -0.25rem 0 0.85rem;
+}
+
+@media (max-width: 767px) {
+  .join-row {
+    flex-direction: column;
+  }
+
+  .join-row .btn {
+    width: 100%;
+  }
+
+  .room-input::placeholder {
+    font-size: 0.75rem;
+  }
+
+  .trump-diagram {
+    --trump-card-w: min(96px, 26vw);
+    max-width: 100%;
+  }
+
+  .trump-diagram-triangle {
+    min-height: 240px;
+  }
+
+  .trump-diagram-diamond {
+    min-height: 280px;
+  }
+
+  .trump-node {
+    font-size: 0.72rem;
+  }
+
+  .trump-node .player-name {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .challenge-outcome {

@@ -2,6 +2,7 @@ const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.ho
 
 const STORAGE_KEY = "banas-session";
 const THEME_KEY = "banas-theme";
+const NAME_KEY = "banas-player-name";
 const IS_TOUCH = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 
 /** @type {WebSocket | null} */
@@ -118,6 +119,7 @@ function openModal(id) {
 }
 
 function closeModal(id) {
+  if (id === "name-modal" && !getPlayerName()) return;
   const el = document.getElementById(id);
   if (!el) return;
   el.hidden = true;
@@ -127,9 +129,57 @@ function closeModal(id) {
 
 function closeAllModals() {
   document.querySelectorAll(".modal-backdrop").forEach((m) => {
+    if (m.id === "name-modal" && !getPlayerName()) return;
     m.hidden = true;
   });
-  document.body.style.overflow = "";
+  const anyOpen = [...document.querySelectorAll(".modal-backdrop")].some((m) => !m.hidden);
+  if (!anyOpen) document.body.style.overflow = "";
+}
+
+function getPlayerName() {
+  try {
+    return (localStorage.getItem(NAME_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function setPlayerName(name) {
+  const cleaned = String(name || "").trim().slice(0, 20);
+  if (!cleaned) return false;
+  try {
+    localStorage.setItem(NAME_KEY, cleaned);
+  } catch {
+    // ignore storage failures
+  }
+  const settingsInput = document.getElementById("settings-name");
+  if (settingsInput) settingsInput.value = cleaned;
+  const welcomeInput = document.getElementById("welcome-name");
+  if (welcomeInput) welcomeInput.value = cleaned;
+  return true;
+}
+
+function syncSettingsNameField() {
+  const settingsInput = document.getElementById("settings-name");
+  if (settingsInput) settingsInput.value = getPlayerName();
+}
+
+function requirePlayerName() {
+  const name = getPlayerName();
+  if (name) return name;
+  toast("Enter your name first");
+  openModal("name-modal");
+  document.getElementById("welcome-name")?.focus();
+  return null;
+}
+
+function promptNameIfNeeded() {
+  if (getPlayerName()) {
+    syncSettingsNameField();
+    return;
+  }
+  openModal("name-modal");
+  requestAnimationFrame(() => document.getElementById("welcome-name")?.focus());
 }
 
 function toast(msg, type = "error") {
@@ -690,6 +740,168 @@ function renderAssign() {
   syncSubmitButton();
 }
 
+/** Fire > Metal > Earth > Water > Fire — mirrors server trump rules. */
+const TRUMP_BEATS = {
+  fire: "metal",
+  metal: "earth",
+  earth: "water",
+  water: "fire",
+  special: null,
+};
+
+function familyBeats(attacker, defender) {
+  if (attacker === "special" || defender === "special") return false;
+  return TRUMP_BEATS[attacker] === defender;
+}
+
+function sortPlaysBySeat(plays) {
+  const order = new Map((state?.players ?? []).map((p, i) => [p.id, i]));
+  return [...plays].sort(
+    (a, b) => (order.get(a.playerId) ?? 0) - (order.get(b.playerId) ?? 0)
+  );
+}
+
+/** Clockwise neighbor trump edges (same as multi-player engine). */
+function getTrumpEdges(plays) {
+  const sorted = sortPlaysBySeat(plays);
+  const edges = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const neighbor = sorted[(i + 1) % sorted.length];
+    if (familyBeats(neighbor.card.family, current.card.family)) {
+      edges.push({
+        fromId: neighbor.playerId,
+        toId: current.playerId,
+        label: `${neighbor.card.family} → ${current.card.family}`,
+      });
+    }
+  }
+  return edges;
+}
+
+function playNodeHtml(play, ch, seat) {
+  const isWinner = play.playerId === ch.winnerId;
+  const isEliminated = ch.eliminated?.includes(play.playerId);
+  const isAi = state.players.find((pl) => pl.id === play.playerId)?.isAi;
+  const statLabels = { power: "Power", speed: "Speed", intelligence: "Intelligence" };
+  return `
+    <div class="trump-node seat-${seat} ${isWinner ? "is-winner" : ""} ${isEliminated ? "is-eliminated" : ""}"
+         data-player-id="${play.playerId}">
+      <div class="player-name">${escapeHtml(play.playerName)}${isAi ? " 🤖" : ""}</div>
+      ${cardHtmlSmall(play.card)}
+      <div class="play-stat">${statLabels[ch.stat]}: <strong>${play.card[ch.stat]}</strong></div>
+    </div>`;
+}
+
+function renderTrumpDiagram(ch) {
+  const sorted = sortPlaysBySeat(ch.plays);
+  const n = sorted.length;
+  const shape = n === 3 ? "triangle" : n === 4 ? "diamond" : "row";
+  const edges = n >= 3 ? getTrumpEdges(ch.plays) : [];
+  const nodes = sorted.map((p, i) => playNodeHtml(p, ch, i)).join("");
+
+  const legend =
+    edges.length > 0
+      ? `<p class="trump-legend">Arrows show who trumps whom (clockwise family trump)</p>`
+      : n >= 3
+        ? `<p class="trump-legend">No family trump this challenge — stats decide among survivors</p>`
+        : "";
+
+  return `
+    <div class="trump-diagram trump-diagram-${shape}"
+         data-trump-edges='${JSON.stringify(edges.map((e) => [e.fromId, e.toId]))}'
+         aria-label="${shape} trump layout">
+      <svg class="trump-arrows" aria-hidden="true">
+        <defs>
+          <marker class="trump-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#ff8c42" />
+          </marker>
+        </defs>
+      </svg>
+      ${nodes}
+    </div>
+    ${legend}`;
+}
+
+function layoutTrumpArrows() {
+  document.querySelectorAll(".trump-diagram").forEach((diagram, idx) => {
+    const svg = diagram.querySelector(".trump-arrows");
+    if (!svg) return;
+
+    const marker = svg.querySelector("marker");
+    const markerId = `trump-arrowhead-${idx}`;
+    if (marker) marker.id = markerId;
+
+    const w = diagram.clientWidth;
+    const h = diagram.clientHeight;
+    if (w < 8 || h < 8) return;
+
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.setAttribute("width", String(w));
+    svg.setAttribute("height", String(h));
+
+    // Clear old lines
+    svg.querySelectorAll("line").forEach((el) => el.remove());
+
+    let edges = [];
+    try {
+      edges = JSON.parse(diagram.dataset.trumpEdges || "[]");
+    } catch {
+      edges = [];
+    }
+
+    const diagramRect = diagram.getBoundingClientRect();
+    const nodeById = new Map(
+      [...diagram.querySelectorAll(".trump-node")].map((node) => [node.dataset.playerId, node])
+    );
+
+    for (const [fromId, toId] of edges) {
+      const fromEl = nodeById.get(fromId);
+      const toEl = nodeById.get(toId);
+      if (!fromEl || !toEl) continue;
+
+      const a = fromEl.getBoundingClientRect();
+      const b = toEl.getBoundingClientRect();
+      const x1 = a.left + a.width / 2 - diagramRect.left;
+      const y1 = a.top + a.height / 2 - diagramRect.top;
+      const x2 = b.left + b.width / 2 - diagramRect.left;
+      const y2 = b.top + b.height / 2 - diagramRect.top;
+
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.hypot(dx, dy) || 1;
+      const pull = Math.min(48, len * 0.28);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("class", "trump-arrow-line");
+      line.setAttribute("x1", String(x1 + (dx / len) * pull));
+      line.setAttribute("y1", String(y1 + (dy / len) * pull));
+      line.setAttribute("x2", String(x2 - (dx / len) * pull));
+      line.setAttribute("y2", String(y2 - (dy / len) * pull));
+      line.setAttribute("marker-end", `url(#${markerId})`);
+      svg.appendChild(line);
+    }
+  });
+}
+
+function renderChallengePlays(ch) {
+  if (ch.plays.length >= 3) return renderTrumpDiagram(ch);
+
+  const statLabels = { power: "Power", speed: "Speed", intelligence: "Intelligence" };
+  return `
+    <div class="challenge-plays">
+      ${ch.plays
+        .map(
+          (p) => `
+        <div class="challenge-play ${p.playerId === ch.winnerId ? "challenge-play-winner" : ""} ${ch.eliminated?.includes(p.playerId) ? "is-eliminated" : ""}">
+          <div class="player-name">${escapeHtml(p.playerName)}${state.players.find((pl) => pl.id === p.playerId)?.isAi ? " 🤖" : ""}</div>
+          ${cardHtmlSmall(p.card)}
+          <div class="play-stat">${statLabels[ch.stat]}: <strong>${p.card[ch.stat]}</strong></div>
+        </div>`
+        )
+        .join("")}
+    </div>`;
+}
+
 function renderResults() {
   renderScoreboard("scoreboard-results");
   const result = state.lastRoundResult;
@@ -725,14 +937,7 @@ function renderResults() {
       return `
       <div class="challenge-card">
         <h3>${statIcons[ch.stat] ?? ""} ${statLabels[ch.stat] ?? ch.stat} Challenge</h3>
-        <div class="challenge-plays">
-          ${ch.plays.map((p) => `
-            <div class="challenge-play ${p.playerId === ch.winnerId ? "challenge-play-winner" : ""}">
-              <div class="player-name">${escapeHtml(p.playerName)}${state.players.find(pl => pl.id === p.playerId)?.isAi ? " 🤖" : ""}</div>
-              ${cardHtmlSmall(p.card)}
-              <div class="play-stat">${statLabels[ch.stat]}: <strong>${p.card[ch.stat]}</strong></div>
-            </div>`).join("")}
-        </div>
+        ${renderChallengePlays(ch)}
         <div class="challenge-outcome ${ch.winnerId ? "win" : ""}">
           <span class="reason-badge ${reasonClass}">${escapeHtml(ch.reasonLabel ?? ch.reason)}</span>
           ${ch.winnerId
@@ -743,6 +948,11 @@ function renderResults() {
       </div>`;
     })
     .join("");
+
+  requestAnimationFrame(() => {
+    layoutTrumpArrows();
+    requestAnimationFrame(layoutTrumpArrows);
+  });
 
   const nextBtn = document.getElementById("btn-next");
   const waitMsg = document.getElementById("results-wait");
@@ -798,8 +1008,8 @@ document.querySelectorAll(".ai-count-btn").forEach((btn) => {
 });
 
 document.getElementById("btn-create").addEventListener("click", async () => {
-  const name = document.getElementById("player-name").value.trim();
-  if (!name) return toast("Enter your name");
+  const name = requirePlayerName();
+  if (!name) return;
   try {
     await ensureConnected();
     send({ type: "create", playerName: name });
@@ -810,8 +1020,8 @@ document.getElementById("btn-create").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-vs-ai").addEventListener("click", async () => {
-  const name = document.getElementById("player-name").value.trim();
-  if (!name) return toast("Enter your name");
+  const name = requirePlayerName();
+  if (!name) return;
   try {
     await ensureConnected();
     send({ type: "create-vs-ai", playerName: name, aiCount: selectedAiCount });
@@ -822,10 +1032,10 @@ document.getElementById("btn-vs-ai").addEventListener("click", async () => {
 });
 
 document.getElementById("btn-join").addEventListener("click", async () => {
-  const name = document.getElementById("player-name").value.trim();
+  const name = requirePlayerName();
+  if (!name) return;
   const code = document.getElementById("room-code").value.trim().toUpperCase();
-  if (!name) return toast("Enter your name");
-  if (!code || code.length !== 4) return toast("Enter a 4-letter room code");
+  if (!code || code.length !== 4) return toast("Enter the code shared with you");
   try {
     await ensureConnected();
     send({ type: "join", playerName: name, roomCode: code });
@@ -833,6 +1043,10 @@ document.getElementById("btn-join").addEventListener("click", async () => {
   } catch {
     toast("Could not connect to server");
   }
+});
+
+document.getElementById("room-code")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-join")?.click();
 });
 
 document.getElementById("btn-copy-code").addEventListener("click", () => {
@@ -910,13 +1124,22 @@ window.addEventListener("online", tryResumeWhenOnline);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") tryResumeWhenOnline();
 });
+window.addEventListener("resize", () => {
+  if (document.getElementById("screen-results")?.classList.contains("active")) {
+    layoutTrumpArrows();
+  }
+});
 
 // Theme + modals
 syncThemeToggle();
+syncSettingsNameField();
+promptNameIfNeeded();
 
 document.getElementById("btn-settings").addEventListener("click", () => {
   closeModal("rules-modal");
+  syncSettingsNameField();
   openModal("settings-modal");
+  document.getElementById("settings-name")?.focus();
 });
 
 document.getElementById("btn-rules").addEventListener("click", () => {
@@ -927,6 +1150,27 @@ document.getElementById("btn-rules").addEventListener("click", () => {
 document.getElementById("btn-rules-lobby")?.addEventListener("click", () => {
   closeModal("settings-modal");
   openModal("rules-modal");
+});
+
+document.getElementById("btn-save-welcome-name")?.addEventListener("click", () => {
+  const value = document.getElementById("welcome-name")?.value ?? "";
+  if (!setPlayerName(value)) return toast("Enter your name");
+  closeModal("name-modal");
+  toast(`Welcome, ${getPlayerName()}!`, "info");
+});
+
+document.getElementById("welcome-name")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-save-welcome-name")?.click();
+});
+
+document.getElementById("btn-save-settings-name")?.addEventListener("click", () => {
+  const value = document.getElementById("settings-name")?.value ?? "";
+  if (!setPlayerName(value)) return toast("Enter your name");
+  toast("Name saved", "info");
+});
+
+document.getElementById("settings-name")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-save-settings-name")?.click();
 });
 
 document.querySelectorAll("[data-close-modal]").forEach((btn) => {
