@@ -84,6 +84,7 @@ function showScreen(name) {
     finished: "screen-finished",
   };
   document.getElementById(map[name])?.classList.add("active");
+  document.body.dataset.screen = name;
   const exitBtn = document.getElementById("btn-exit");
   if (exitBtn) exitBtn.hidden = name === "lobby";
 }

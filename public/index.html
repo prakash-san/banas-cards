@@ -23,8 +23,37 @@
     })();
   </script>
 </head>
-<body>
-  <div class="bg-pattern"></div>
+<body data-screen="lobby">
+  <div class="bg-pattern" aria-hidden="true"></div>
+  <div class="bg-banas" aria-hidden="true">
+    <div class="bg-banas-grid">
+      <img src="/cards/fire-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/dolphin-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/gold-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/tree-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/frostpaw-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/lava-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/aqua-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/silver-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/mud-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/poseidon-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/volcano-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/whale-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/bronze-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/grass-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/fire-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/dolphin-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/gold-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/tree-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/frostpaw-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/lava-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/aqua-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/poseidon-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/volcano-banas.jpg" alt="" loading="lazy" />
+      <img src="/cards/whale-banas.jpg" alt="" loading="lazy" />
+    </div>
+    <div class="bg-banas-veil"></div>
+  </div>
 
   <header class="site-header">
     <div class="header-toolbar">
@@ -53,11 +82,16 @@
     <section id="screen-lobby" class="screen active">
       <div class="card-panel lobby-panel">
         <div class="lobby-actions">
-          <button id="btn-create" class="btn btn-primary" type="button">Create Game</button>
+          <div class="lobby-option lobby-option-create">
+            <h2 class="lobby-option-title">Create a game</h2>
+            <p class="lobby-option-hint">Host a room and invite friends with a code</p>
+            <button id="btn-create" class="btn btn-primary" type="button">Create Game</button>
+          </div>
 
-          <div class="solo-section">
+          <div class="lobby-option lobby-option-ai">
+            <h2 class="lobby-option-title">Play with AI</h2>
+            <p class="lobby-option-hint">Solo match — you + bots, max 4 players</p>
             <button id="btn-vs-ai" class="btn btn-accent" type="button">Play with AI</button>
-            <p class="solo-limit-hint">You + bots = max 4 players</p>
             <div class="ai-count-picker" aria-label="Number of AI bots">
               <button type="button" class="ai-count-btn active" data-count="1">1 Bot</button>
               <button type="button" class="ai-count-btn" data-count="2">2 Bots</button>
@@ -65,17 +99,21 @@
             </div>
           </div>
 
-          <div class="join-row">
-            <input
-              id="room-code"
-              type="text"
-              maxlength="4"
-              placeholder="Enter the code shared with you"
-              class="room-input"
-              autocomplete="off"
-              aria-label="Room code"
-            />
-            <button id="btn-join" class="btn btn-secondary" type="button">Join Game</button>
+          <div class="lobby-option lobby-option-join">
+            <h2 class="lobby-option-title">Join a game</h2>
+            <p class="lobby-option-hint">Enter the room code a friend shared with you</p>
+            <div class="join-row">
+              <input
+                id="room-code"
+                type="text"
+                maxlength="4"
+                placeholder="Enter the code shared with you"
+                class="room-input"
+                autocomplete="off"
+                aria-label="Room code"
+              />
+              <button id="btn-join" class="btn btn-secondary" type="button">Join Game</button>
+            </div>
           </div>
         </div>
 
