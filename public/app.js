@@ -762,20 +762,19 @@ function sortPlaysBySeat(plays) {
   );
 }
 
-/** Clockwise neighbor trump edges (same as multi-player engine). */
-function getTrumpEdges(plays) {
+/** Clockwise neighbor edges — always drawn; `trumped` when family trump applies. */
+function getClockwiseEdges(plays) {
   const sorted = sortPlaysBySeat(plays);
   const edges = [];
   for (let i = 0; i < sorted.length; i++) {
     const current = sorted[i];
     const neighbor = sorted[(i + 1) % sorted.length];
-    if (familyBeats(neighbor.card.family, current.card.family)) {
-      edges.push({
-        fromId: neighbor.playerId,
-        toId: current.playerId,
-        label: `${neighbor.card.family} → ${current.card.family}`,
-      });
-    }
+    // Same direction as the engine: clockwise neighbor challenges current.
+    edges.push({
+      fromId: neighbor.playerId,
+      toId: current.playerId,
+      trumped: familyBeats(neighbor.card.family, current.card.family),
+    });
   }
   return edges;
 }
@@ -798,24 +797,25 @@ function renderTrumpDiagram(ch) {
   const sorted = sortPlaysBySeat(ch.plays);
   const n = sorted.length;
   const shape = n === 3 ? "triangle" : n === 4 ? "diamond" : "row";
-  const edges = n >= 3 ? getTrumpEdges(ch.plays) : [];
+  const edges = n >= 3 ? getClockwiseEdges(ch.plays) : [];
   const nodes = sorted.map((p, i) => playNodeHtml(p, ch, i)).join("");
+  const anyTrump = edges.some((e) => e.trumped);
 
-  const legend =
-    edges.length > 0
-      ? `<p class="trump-legend">Arrows show who trumps whom (clockwise family trump)</p>`
-      : n >= 3
-        ? `<p class="trump-legend">No family trump this challenge — stats decide among survivors</p>`
-        : "";
+  const legend = anyTrump
+    ? `<p class="trump-legend"><span class="legend-swatch legend-trump"></span> Red = family trump &nbsp;&nbsp; <span class="legend-swatch legend-check"></span> Curve = clockwise challenge</p>`
+    : `<p class="trump-legend"><span class="legend-swatch legend-check"></span> Curved arrows follow clockwise challenges — no family trump this round</p>`;
 
   return `
     <div class="trump-diagram trump-diagram-${shape}"
-         data-trump-edges='${JSON.stringify(edges.map((e) => [e.fromId, e.toId]))}'
+         data-trump-edges='${JSON.stringify(edges)}'
          aria-label="${shape} trump layout">
       <svg class="trump-arrows" aria-hidden="true">
         <defs>
-          <marker class="trump-arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,4 L0,8 Z" fill="#ff8c42" />
+          <marker id="trump-arrowhead-check-${shape}" class="trump-arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill="#8ecae6" />
+          </marker>
+          <marker id="trump-arrowhead-hit-${shape}" class="trump-arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L7,3.5 L0,7 Z" fill="#e63946" />
           </marker>
         </defs>
       </svg>
@@ -824,14 +824,33 @@ function renderTrumpDiagram(ch) {
     ${legend}`;
 }
 
+function curvedArrowPath(x1, y1, x2, y2, cx, cy) {
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+
+  // Push the control point outward from the diagram center for a circular feel.
+  let ox = mx - cx;
+  let oy = my - cy;
+  const fromCenter = Math.hypot(ox, oy);
+  if (fromCenter < 4) {
+    // Nearly through center — bend perpendicular to the chord.
+    ox = -dy;
+    oy = dx;
+  }
+  const olen = Math.hypot(ox, oy) || 1;
+  const bulge = Math.min(56, Math.max(28, len * 0.32));
+  const qx = mx + (ox / olen) * bulge;
+  const qy = my + (oy / olen) * bulge;
+  return `M ${x1.toFixed(1)} ${y1.toFixed(1)} Q ${qx.toFixed(1)} ${qy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+}
+
 function layoutTrumpArrows() {
   document.querySelectorAll(".trump-diagram").forEach((diagram, idx) => {
     const svg = diagram.querySelector(".trump-arrows");
     if (!svg) return;
-
-    const marker = svg.querySelector("marker");
-    const markerId = `trump-arrowhead-${idx}`;
-    if (marker) marker.id = markerId;
 
     const w = diagram.clientWidth;
     const h = diagram.clientHeight;
@@ -841,8 +860,7 @@ function layoutTrumpArrows() {
     svg.setAttribute("width", String(w));
     svg.setAttribute("height", String(h));
 
-    // Clear old lines
-    svg.querySelectorAll("line").forEach((el) => el.remove());
+    svg.querySelectorAll("path.trump-arrow-path").forEach((el) => el.remove());
 
     let edges = [];
     try {
@@ -852,34 +870,45 @@ function layoutTrumpArrows() {
     }
 
     const diagramRect = diagram.getBoundingClientRect();
+    const cx = w / 2;
+    const cy = h / 2;
     const nodeById = new Map(
       [...diagram.querySelectorAll(".trump-node")].map((node) => [node.dataset.playerId, node])
     );
 
-    for (const [fromId, toId] of edges) {
-      const fromEl = nodeById.get(fromId);
-      const toEl = nodeById.get(toId);
+    const checkId = `trump-arrowhead-check-${idx}`;
+    const hitId = `trump-arrowhead-hit-${idx}`;
+    const markers = svg.querySelectorAll("marker");
+    if (markers[0]) markers[0].id = checkId;
+    if (markers[1]) markers[1].id = hitId;
+
+    for (const edge of edges) {
+      const fromEl = nodeById.get(edge.fromId);
+      const toEl = nodeById.get(edge.toId);
       if (!fromEl || !toEl) continue;
 
       const a = fromEl.getBoundingClientRect();
       const b = toEl.getBoundingClientRect();
-      const x1 = a.left + a.width / 2 - diagramRect.left;
-      const y1 = a.top + a.height / 2 - diagramRect.top;
-      const x2 = b.left + b.width / 2 - diagramRect.left;
-      const y2 = b.top + b.height / 2 - diagramRect.top;
+      let x1 = a.left + a.width / 2 - diagramRect.left;
+      let y1 = a.top + a.height / 2 - diagramRect.top;
+      let x2 = b.left + b.width / 2 - diagramRect.left;
+      let y2 = b.top + b.height / 2 - diagramRect.top;
 
       const dx = x2 - x1;
       const dy = y2 - y1;
       const len = Math.hypot(dx, dy) || 1;
-      const pull = Math.min(48, len * 0.28);
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("class", "trump-arrow-line");
-      line.setAttribute("x1", String(x1 + (dx / len) * pull));
-      line.setAttribute("y1", String(y1 + (dy / len) * pull));
-      line.setAttribute("x2", String(x2 - (dx / len) * pull));
-      line.setAttribute("y2", String(y2 - (dy / len) * pull));
-      line.setAttribute("marker-end", `url(#${markerId})`);
-      svg.appendChild(line);
+      const pull = Math.min(42, len * 0.26);
+      x1 += (dx / len) * pull;
+      y1 += (dy / len) * pull;
+      x2 -= (dx / len) * pull;
+      y2 -= (dy / len) * pull;
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("class", `trump-arrow-path ${edge.trumped ? "is-trump" : "is-check"}`);
+      path.setAttribute("d", curvedArrowPath(x1, y1, x2, y2, cx, cy));
+      path.setAttribute("marker-end", `url(#${edge.trumped ? hitId : checkId})`);
+      path.setAttribute("fill", "none");
+      svg.appendChild(path);
     }
   });
 }
