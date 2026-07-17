@@ -39,8 +39,13 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 /** @type {ReturnType<typeof setInterval> | null} */
 let heartbeatTimer = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let pingWatchdog = null;
+/** @type {number} */
+let awaitingPongSince = 0;
 const MAX_RECONNECT_ATTEMPTS = 12;
-const HEARTBEAT_MS = 20_000;
+const HEARTBEAT_MS = 12_000;
+const PONG_TIMEOUT_MS = 4_000;
 
 function handsChanged(prev, next) {
   const a = prev?.myHand;
@@ -60,8 +65,15 @@ function needsAssignDomRefresh(prev, next) {
 
 function updateAssignStatusOnly() {
   document.getElementById("round-num").textContent = state.round;
-  document.getElementById("submit-status").textContent =
-    `${state.submittedCount}/${state.totalPlayers} players ready`;
+  const offlineHumans = state.players.filter((p) => !p.isAi && !p.connected);
+  let status = `${state.submittedCount}/${state.totalPlayers} players ready`;
+  if (offlineHumans.length) {
+    const names = offlineHumans.map((p) => p.name).join(", ");
+    status += offlineHumans.length === 1
+      ? ` · ${names} reconnecting…`
+      : ` · waiting on reconnect (${names})`;
+  }
+  document.getElementById("submit-status").textContent = status;
   renderScoreboard("scoreboard");
 }
 
@@ -209,6 +221,7 @@ function resetLocalGame() {
   pendingAssignRender = false;
   attemptingReconnect = false;
   reconnectAttempts = 0;
+  setConnectionBanner(false);
   showScreen("lobby");
   queueMicrotask(() => {
     intentionalClose = false;
@@ -238,15 +251,73 @@ function stopHeartbeat() {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
   }
+  if (pingWatchdog) {
+    clearTimeout(pingWatchdog);
+    pingWatchdog = null;
+  }
+  awaitingPongSince = 0;
+}
+
+function markPongReceived() {
+  awaitingPongSince = 0;
+  if (pingWatchdog) {
+    clearTimeout(pingWatchdog);
+    pingWatchdog = null;
+  }
+}
+
+function sendHeartbeatPing() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  awaitingPongSince = Date.now();
+  try {
+    ws.send(JSON.stringify({ type: "ping" }));
+  } catch {
+    forceReconnect("ping failed");
+    return;
+  }
+  if (pingWatchdog) clearTimeout(pingWatchdog);
+  pingWatchdog = setTimeout(() => {
+    pingWatchdog = null;
+    if (awaitingPongSince && Date.now() - awaitingPongSince >= PONG_TIMEOUT_MS) {
+      forceReconnect("heartbeat timeout");
+    }
+  }, PONG_TIMEOUT_MS);
 }
 
 function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "ping" }));
-    }
+    sendHeartbeatPing();
   }, HEARTBEAT_MS);
+}
+
+function setConnectionBanner(visible, message = "Reconnecting…") {
+  const el = document.getElementById("connection-banner");
+  if (!el) return;
+  el.hidden = !visible;
+  if (visible) el.textContent = message;
+}
+
+function forceReconnect(_reason = "connection lost") {
+  if (intentionalClose) return;
+  stopHeartbeat();
+  attemptingReconnect = false;
+  setConnectionBanner(true, "Connection lost — reconnecting…");
+  if (ws) {
+    try {
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      ws.close();
+    } catch {
+      // ignore
+    }
+    ws = null;
+  }
+  if (playerId && roomCode) {
+    toast("Connection lost — reconnecting…", "info");
+    scheduleReconnect();
+  }
 }
 
 function syncSubmitButton() {
@@ -290,17 +361,32 @@ function connect() {
     }
 
     ws = new WebSocket(WS_URL);
+    let settled = false;
     ws.onopen = () => {
       reconnectAttempts = 0;
       startHeartbeat();
+      setConnectionBanner(false);
+      settled = true;
       resolve();
     };
-    ws.onerror = () => reject(new Error("Connection failed"));
+    ws.onerror = () => {
+      if (!settled) {
+        settled = true;
+        reject(new Error("Connection failed"));
+      }
+    };
     ws.onmessage = (ev) => handleMessage(JSON.parse(ev.data));
     ws.onclose = () => {
       stopHeartbeat();
-      if (intentionalClose || attemptingReconnect) return;
+      if (intentionalClose) return;
+      if (attemptingReconnect) {
+        // connect() succeeded but session resume may still be in flight —
+        // the resume watchdog will retry. Still show status.
+        setConnectionBanner(true, "Reconnecting…");
+        return;
+      }
       if (playerId && roomCode) {
+        setConnectionBanner(true, "Connection lost — reconnecting…");
         toast("Connection lost — reconnecting…", "info");
         scheduleReconnect();
         return;
@@ -318,6 +404,7 @@ function scheduleReconnect() {
     return;
   }
 
+  setConnectionBanner(true, "Reconnecting…");
   const delay = Math.min(1000 * 2 ** reconnectAttempts, 15000);
   reconnectAttempts += 1;
   reconnectTimer = setTimeout(async () => {
@@ -359,6 +446,7 @@ function clearSavedSession() {
 
 function failReconnectSilently() {
   attemptingReconnect = false;
+  setConnectionBanner(false);
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -387,11 +475,14 @@ function send(data) {
 function handleMessage(msg) {
   switch (msg.type) {
     case "pong":
+      markPongReceived();
       break;
     case "joined":
     case "reconnected":
       attemptingReconnect = false;
       reconnectAttempts = 0;
+      setConnectionBanner(false);
+      markPongReceived();
       playerId = msg.playerId;
       if (msg.roomCode) roomCode = msg.roomCode;
       else if (msg.state?.roomCode) roomCode = msg.state.roomCode;
@@ -404,6 +495,7 @@ function handleMessage(msg) {
       toast("Could not resume — room is gone. Start a new game.", "error");
       break;
     case "state":
+      markPongReceived();
       if (playerId && msg.states?.[playerId]) applyState(msg.states[playerId]);
       break;
     case "error":
@@ -482,8 +574,8 @@ function renderScoreboard(containerId) {
   el.innerHTML = state.players
     .map(
       (p) => `
-    <div class="score-pill ${p.id === playerId ? "me" : ""}">
-      ${escapeHtml(p.name)}${p.isHost ? " 👑" : ""}${p.isAi ? " 🤖" : ""}
+    <div class="score-pill ${p.id === playerId ? "me" : ""} ${!p.connected && !p.isAi ? "offline" : ""}">
+      ${escapeHtml(p.name)}${p.isHost ? " 👑" : ""}${p.isAi ? " 🤖" : ""}${!p.connected && !p.isAi ? " · offline" : ""}
       <span class="pts">${p.score}</span>
     </div>`
     )
@@ -689,10 +781,7 @@ function assignCardToStat(cardId, stat) {
 }
 
 function renderAssign() {
-  renderScoreboard("scoreboard");
-  document.getElementById("round-num").textContent = state.round;
-  document.getElementById("submit-status").textContent =
-    `${state.submittedCount}/${state.totalPlayers} players ready`;
+  updateAssignStatusOnly();
 
   const instruction = document.getElementById("assign-instruction");
   const locked = !!state.myAssignment;
@@ -1136,7 +1225,6 @@ document.querySelectorAll(".btn-leave").forEach((btn) => {
 
 function tryResumeWhenOnline() {
   if (intentionalClose) return;
-  if (ws?.readyState === WebSocket.OPEN) return;
   if (!(playerId && roomCode)) {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
@@ -1147,12 +1235,25 @@ function tryResumeWhenOnline() {
       return;
     }
   }
+
+  // Mobile often leaves a zombie OPEN socket after backgrounding. Probe it.
+  if (ws?.readyState === WebSocket.OPEN) {
+    sendHeartbeatPing();
+    return;
+  }
+
   scheduleReconnect();
 }
 
 window.addEventListener("online", tryResumeWhenOnline);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") tryResumeWhenOnline();
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) tryResumeWhenOnline();
+});
+window.addEventListener("focus", () => {
+  tryResumeWhenOnline();
 });
 window.addEventListener("resize", () => {
   if (document.getElementById("screen-results")?.classList.contains("active")) {
