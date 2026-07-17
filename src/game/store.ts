@@ -23,11 +23,17 @@ interface Room {
   aiTimers: ReturnType<typeof setTimeout>[];
   /** Delay room teardown so a reconnecting client can reclaim the seat. */
   emptyRoomTimer: ReturnType<typeof setTimeout> | null;
+  /** Per-player timers that keep 3–4 player games moving after a drop. */
+  disconnectTimers: Map<string, ReturnType<typeof setTimeout>>;
 }
 
 const rooms = new Map<string, Room>();
 /** Keep empty rooms in memory briefly so a drop can resume without persistence. */
 const EMPTY_ROOM_GRACE_MS = 2 * 60 * 1000;
+/** Transfer host if they stay offline this long (covers mobile blips). */
+const HOST_TRANSFER_MS = Number(process.env.BANAS_HOST_TRANSFER_MS) || 12_000;
+/** Auto-play a disconnected seat so rounds don't freeze at e.g. 2/3 ready. */
+const DISCONNECT_AUTOPLAY_MS = Number(process.env.BANAS_DISCONNECT_AUTOPLAY_MS) || 25_000;
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -57,6 +63,50 @@ function createAiPlayer(): Player {
 function clearAiTimers(room: Room): void {
   for (const t of room.aiTimers) clearTimeout(t);
   room.aiTimers = [];
+}
+
+function clearDisconnectTimer(room: Room, playerId: string): void {
+  const timer = room.disconnectTimers.get(playerId);
+  if (timer) {
+    clearTimeout(timer);
+    room.disconnectTimers.delete(playerId);
+  }
+}
+
+function clearAllDisconnectTimers(room: Room): void {
+  for (const timer of room.disconnectTimers.values()) clearTimeout(timer);
+  room.disconnectTimers.clear();
+}
+
+function transferHostIfNeeded(room: Room, preferPlayerId?: string): boolean {
+  const host = room.state.players.find((p) => p.isHost && !p.isAi);
+  if (host?.connected) return false;
+
+  const humans = room.state.players.filter((p) => !p.isAi);
+  const preferred = preferPlayerId
+    ? humans.find((p) => p.id === preferPlayerId && p.connected)
+    : undefined;
+  const nextHost =
+    preferred ??
+    humans.find((p) => p.connected) ??
+    humans.find((p) => p.id !== host?.id) ??
+    humans[0];
+
+  if (!nextHost || nextHost.id === host?.id) return false;
+
+  for (const p of room.state.players) p.isHost = p.id === nextHost.id;
+  return true;
+}
+
+function autoPlayDisconnectedPlayer(room: Room, playerId: string): void {
+  if (room.state.phase !== "assigning") return;
+  const player = room.state.players.find((p) => p.id === playerId);
+  if (!player || player.isAi || player.connected) return;
+
+  const hand = room.state.hands.find((h) => h.playerId === playerId);
+  if (!hand || hand.assignment) return;
+
+  applyAssignment(room, playerId, computeAssignment(hand.cards));
 }
 
 function canStartGame(state: GameState): boolean {
@@ -122,6 +172,7 @@ export function bindPlayerSocket(playerId: string, ws: WebSocket): boolean {
   if (!player || player.isAi) return false;
 
   cancelEmptyRoomTimer(room);
+  clearPlayerDisconnectTimers(room, playerId);
   player.connected = true;
   if (room.sockets.get(playerId) !== ws) {
     room.sockets.set(playerId, ws);
@@ -138,8 +189,34 @@ function cancelEmptyRoomTimer(room: Room): void {
 
 function destroyRoom(room: Room): void {
   clearAiTimers(room);
+  clearAllDisconnectTimers(room);
   cancelEmptyRoomTimer(room);
   rooms.delete(room.state.roomCode);
+}
+
+function scheduleDisconnectRecovery(room: Room, playerId: string): void {
+  clearPlayerDisconnectTimers(room, playerId);
+
+  const hostTimer = setTimeout(() => {
+    room.disconnectTimers.delete(`${playerId}:host`);
+    const player = room.state.players.find((p) => p.id === playerId);
+    if (!player || player.connected || player.isAi) return;
+    if (!player.isHost) return;
+    if (transferHostIfNeeded(room)) broadcast(room);
+  }, HOST_TRANSFER_MS);
+
+  const autoplayTimer = setTimeout(() => {
+    room.disconnectTimers.delete(`${playerId}:auto`);
+    autoPlayDisconnectedPlayer(room, playerId);
+  }, DISCONNECT_AUTOPLAY_MS);
+
+  room.disconnectTimers.set(`${playerId}:host`, hostTimer);
+  room.disconnectTimers.set(`${playerId}:auto`, autoplayTimer);
+}
+
+function clearPlayerDisconnectTimers(room: Room, playerId: string): void {
+  clearDisconnectTimer(room, `${playerId}:host`);
+  clearDisconnectTimer(room, `${playerId}:auto`);
 }
 
 function scheduleEmptyRoomCleanup(room: Room): void {
@@ -238,6 +315,7 @@ function setupRoom(
     playerOrder: players.map((p) => p.id),
     aiTimers: [],
     emptyRoomTimer: null,
+    disconnectTimers: new Map(),
   };
   rooms.set(roomCode, room);
   return room;
@@ -359,6 +437,7 @@ export function reconnectPlayer(
   if (!player || player.isAi) return false;
 
   cancelEmptyRoomTimer(room);
+  clearPlayerDisconnectTimers(room, playerId);
   player.connected = true;
 
   // Bind the new socket first, then close any stale prior connection.
@@ -397,11 +476,13 @@ export function handleDisconnect(playerId: string, ws?: WebSocket): void {
   }
 
   if (room.sockets.size === 0) {
+    clearAllDisconnectTimers(room);
     scheduleEmptyRoomCleanup(room);
     broadcast(room);
     return;
   }
 
+  scheduleDisconnectRecovery(room, playerId);
   broadcast(room);
 }
 
@@ -414,6 +495,7 @@ export function leaveRoom(playerId: string): boolean {
   if (!leaving || leaving.isAi) return false;
 
   room.sockets.delete(playerId);
+  clearPlayerDisconnectTimers(room, playerId);
   room.state.players = room.state.players.filter((p) => p.id !== playerId);
   room.playerOrder = room.playerOrder.filter((id) => id !== playerId);
   room.state.hands = room.state.hands.filter((h) => h.playerId !== playerId);
@@ -425,8 +507,7 @@ export function leaveRoom(playerId: string): boolean {
   }
 
   if (leaving.isHost) {
-    const nextHost = humansLeft[0];
-    for (const p of room.state.players) p.isHost = p.id === nextHost.id;
+    transferHostIfNeeded(room);
   }
 
   if (room.state.phase === "assigning") {
@@ -468,7 +549,13 @@ export function nextRound(playerId: string): string | null {
   const room = getRoomByPlayer(playerId);
   if (!room) return "Not in a room.";
   const player = room.state.players.find((p) => p.id === playerId);
-  if (!player?.isHost) return "Only the host can continue.";
+  if (!player) return "Not in a room.";
+  const host = room.state.players.find((p) => p.isHost && !p.isAi);
+  if (!player.isHost && host?.connected) return "Only the host can continue.";
+  if (!player.isHost && !host?.connected) {
+    // Host dropped — let any connected human advance so the table isn't stuck.
+    transferHostIfNeeded(room, playerId);
+  }
   if (room.state.phase !== "round-summary") return "Not ready for next round.";
 
   clearAiTimers(room);
@@ -482,7 +569,12 @@ export function playAgain(playerId: string): string | null {
   const room = getRoomByPlayer(playerId);
   if (!room) return "Not in a room.";
   const player = room.state.players.find((p) => p.id === playerId);
-  if (!player?.isHost) return "Only the host can reset.";
+  if (!player) return "Not in a room.";
+  const host = room.state.players.find((p) => p.isHost && !p.isAi);
+  if (!player.isHost && host?.connected) return "Only the host can reset.";
+  if (!player.isHost && !host?.connected) {
+    transferHostIfNeeded(room, playerId);
+  }
 
   clearAiTimers(room);
   room.state.players = room.state.players.map((p) => ({
