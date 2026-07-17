@@ -1218,6 +1218,27 @@ input[type="text"]:focus {
   margin-bottom: 1rem;
 }
 
+.score-pill.offline {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.connection-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 150;
+  padding: 0.55rem 1rem;
+  padding-top: max(0.55rem, env(safe-area-inset-top));
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  background: color-mix(in srgb, #c45c26 88%, #1a1028);
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+
 .toast {
   position: fixed;
   bottom: 2rem;

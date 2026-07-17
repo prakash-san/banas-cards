@@ -96,143 +96,13 @@ wss.on("connection", (ws: AliveSocket) => {
       return;
     }
 
-    // Keep the live socket mapped even if a stale close race cleared it.
-    if (playerId) {
-      bindPlayerSocket(playerId, ws);
-    }
-
-    switch (msg.type) {
-      case "ping": {
-        ws.isAlive = true;
-        send(ws, { type: "pong" });
-        break;
-      }
-
-      case "create-vs-ai": {
-        const name = msg.playerName ?? "Player";
-        const aiCount = msg.aiCount ?? 1;
-        const result = createRoomVsAi(name, ws, aiCount);
-        playerId = result.playerId;
-        const state = getRoomState(result.roomCode);
-        send(ws, {
-          type: "joined",
-          roomCode: result.roomCode,
-          playerId: result.playerId,
-          state: state ? toClientState(state, result.playerId) : null,
-        });
-        break;
-      }
-
-      case "add-ai": {
-        if (!playerId) return;
-        const err = addAiOpponents(playerId, msg.aiCount ?? 1);
-        if (err) send(ws, { type: "error", message: err });
-        break;
-      }
-
-      case "create": {
-        const name = msg.playerName ?? "Host";
-        const result = createRoom(name, ws);
-        playerId = result.playerId;
-        const state = getRoomState(result.roomCode);
-        send(ws, {
-          type: "joined",
-          roomCode: result.roomCode,
-          playerId: result.playerId,
-          state: state ? toClientState(state, result.playerId) : null,
-        });
-        break;
-      }
-
-      case "join": {
-        if (!msg.roomCode) {
-          send(ws, { type: "error", message: "Room code required." });
-          return;
-        }
-        const name = msg.playerName ?? "Player";
-        const result = joinRoom(msg.roomCode, name, ws);
-        if ("error" in result) {
-          send(ws, { type: "error", message: result.error });
-          return;
-        }
-        playerId = result.playerId;
-        const state = getRoomState(msg.roomCode);
-        send(ws, {
-          type: "joined",
-          roomCode: msg.roomCode.toUpperCase(),
-          playerId: result.playerId,
-          state: state ? toClientState(state, result.playerId) : null,
-        });
-        break;
-      }
-
-      case "reconnect": {
-        if (!msg.roomCode || !msg.playerId) {
-          send(ws, { type: "error", message: "Room code and player ID required." });
-          return;
-        }
-        const ok = reconnectPlayer(msg.roomCode, msg.playerId, ws);
-        if (!ok) {
-          send(ws, { type: "reconnect-failed" });
-          return;
-        }
-        playerId = msg.playerId;
-        const code = msg.roomCode.toUpperCase();
-        const state = getRoomState(code);
-        send(ws, {
-          type: "reconnected",
-          roomCode: code,
-          playerId: msg.playerId,
-          state: state ? toClientState(state, msg.playerId) : null,
-        });
-        break;
-      }
-
-      case "start": {
-        if (!playerId) return;
-        const err = startGame(playerId);
-        if (err) send(ws, { type: "error", message: err });
-        break;
-      }
-
-      case "assign": {
-        if (!playerId || !msg.assignment) return;
-        const err = submitAssignment(playerId, msg.assignment);
-        if (err) send(ws, { type: "error", message: err });
-        break;
-      }
-
-      case "next-round": {
-        if (!playerId) return;
-        const err = nextRound(playerId);
-        if (err) send(ws, { type: "error", message: err });
-        break;
-      }
-
-      case "view-victory": {
-        if (!playerId) return;
-        const err = acknowledgeVictory(playerId);
-        if (err) send(ws, { type: "error", message: err });
-        break;
-      }
-
-      case "play-again": {
-        if (!playerId) return;
-        const err = playAgain(playerId);
-        if (err) send(ws, { type: "error", message: err });
-        break;
-      }
-
-      case "leave": {
-        if (!playerId) return;
-        leaveRoom(playerId);
-        playerId = null;
-        send(ws, { type: "left" });
-        break;
-      }
-
-      default:
-        send(ws, { type: "error", message: "Unknown message type." });
+    try {
+      handleClientMessage(ws, msg, () => playerId, (id) => {
+        playerId = id;
+      });
+    } catch (err) {
+      console.error("WebSocket message handler error:", err);
+      send(ws, { type: "error", message: "Something went wrong. Try again." });
     }
   });
 
@@ -241,6 +111,157 @@ wss.on("connection", (ws: AliveSocket) => {
   });
 });
 
+function handleClientMessage(
+  ws: AliveSocket,
+  msg: ClientMessage,
+  getPlayerId: () => string | null,
+  setPlayerId: (id: string | null) => void
+): void {
+  let playerId = getPlayerId();
+
+  // Keep the live socket mapped even if a stale close race cleared it.
+  if (playerId) {
+    bindPlayerSocket(playerId, ws);
+  }
+
+  switch (msg.type) {
+    case "ping": {
+      ws.isAlive = true;
+      send(ws, { type: "pong" });
+      break;
+    }
+
+    case "create-vs-ai": {
+      const name = msg.playerName ?? "Player";
+      const aiCount = msg.aiCount ?? 1;
+      const result = createRoomVsAi(name, ws, aiCount);
+      playerId = result.playerId;
+      setPlayerId(playerId);
+      const state = getRoomState(result.roomCode);
+      send(ws, {
+        type: "joined",
+        roomCode: result.roomCode,
+        playerId: result.playerId,
+        state: state ? toClientState(state, result.playerId) : null,
+      });
+      break;
+    }
+
+    case "add-ai": {
+      if (!playerId) return;
+      const err = addAiOpponents(playerId, msg.aiCount ?? 1);
+      if (err) send(ws, { type: "error", message: err });
+      break;
+    }
+
+    case "create": {
+      const name = msg.playerName ?? "Host";
+      const result = createRoom(name, ws);
+      playerId = result.playerId;
+      setPlayerId(playerId);
+      const state = getRoomState(result.roomCode);
+      send(ws, {
+        type: "joined",
+        roomCode: result.roomCode,
+        playerId: result.playerId,
+        state: state ? toClientState(state, result.playerId) : null,
+      });
+      break;
+    }
+
+    case "join": {
+      if (!msg.roomCode) {
+        send(ws, { type: "error", message: "Room code required." });
+        return;
+      }
+      const name = msg.playerName ?? "Player";
+      const result = joinRoom(msg.roomCode, name, ws);
+      if ("error" in result) {
+        send(ws, { type: "error", message: result.error });
+        return;
+      }
+      playerId = result.playerId;
+      setPlayerId(playerId);
+      const state = getRoomState(msg.roomCode);
+      send(ws, {
+        type: "joined",
+        roomCode: msg.roomCode.toUpperCase(),
+        playerId: result.playerId,
+        state: state ? toClientState(state, result.playerId) : null,
+      });
+      break;
+    }
+
+    case "reconnect": {
+      if (!msg.roomCode || !msg.playerId) {
+        send(ws, { type: "error", message: "Room code and player ID required." });
+        return;
+      }
+      const ok = reconnectPlayer(msg.roomCode, msg.playerId, ws);
+      if (!ok) {
+        send(ws, { type: "reconnect-failed" });
+        return;
+      }
+      playerId = msg.playerId;
+      setPlayerId(playerId);
+      const code = msg.roomCode.toUpperCase();
+      const state = getRoomState(code);
+      send(ws, {
+        type: "reconnected",
+        roomCode: code,
+        playerId: msg.playerId,
+        state: state ? toClientState(state, msg.playerId) : null,
+      });
+      break;
+    }
+
+    case "start": {
+      if (!playerId) return;
+      const err = startGame(playerId);
+      if (err) send(ws, { type: "error", message: err });
+      break;
+    }
+
+    case "assign": {
+      if (!playerId || !msg.assignment) return;
+      const err = submitAssignment(playerId, msg.assignment);
+      if (err) send(ws, { type: "error", message: err });
+      break;
+    }
+
+    case "next-round": {
+      if (!playerId) return;
+      const err = nextRound(playerId);
+      if (err) send(ws, { type: "error", message: err });
+      break;
+    }
+
+    case "view-victory": {
+      if (!playerId) return;
+      const err = acknowledgeVictory(playerId);
+      if (err) send(ws, { type: "error", message: err });
+      break;
+    }
+
+    case "play-again": {
+      if (!playerId) return;
+      const err = playAgain(playerId);
+      if (err) send(ws, { type: "error", message: err });
+      break;
+    }
+
+    case "leave": {
+      if (!playerId) return;
+      leaveRoom(playerId);
+      setPlayerId(null);
+      send(ws, { type: "left" });
+      break;
+    }
+
+    default:
+      send(ws, { type: "error", message: "Unknown message type." });
+  }
+}
 server.listen(PORT, () => {
   console.log(`Banas Cards running at http://localhost:${PORT}`);
 });
