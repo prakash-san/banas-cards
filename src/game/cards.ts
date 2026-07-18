@@ -141,6 +141,16 @@ export const ALL_CARDS: Card[] = [
     flavor: "Rules the tides with a paddle-sized trident and endless pancake enthusiasm",
     image: "/cards/poseidon-banas.jpg",
   },
+  {
+    id: "einstein-banas",
+    name: "Einstein Banas",
+    family: "special",
+    power: 35,
+    speed: 65,
+    intelligence: 100,
+    flavor: "Solves the universe between cuddles and pancakes",
+    image: "/cards/einstein-banas.jpg",
+  },
 ];
 
 const cardById = new Map(ALL_CARDS.map((c) => [c.id, c]));
